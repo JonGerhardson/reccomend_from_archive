@@ -272,6 +272,59 @@ class RecommenderConfig:
     # Skips
     penalize_skips: bool = True # Toggle for candidate skip penalty
 
+    def get_summary(self, compact: bool = False) -> str:
+        """Generate a summary of key config settings for playlist descriptions.
+        
+        Args:
+            compact: If True, return a single-line summary for Spotify (max 300 chars).
+                     If False, return a multi-line summary for txt files.
+        """
+        parts = []
+        
+        # Core settings
+        parts.append(f"Moods:{self.n_clusters}")
+        parts.append(f"Recency:{self.recency_decay}")
+        parts.append(f"RangePen:{self.range_penalty_strength}")
+        parts.append(f"GenreMode:{self.genre_match_mode}")
+        
+        # Pool sizes
+        parts.append(f"Pop:{self.popularity_min}-{self.popularity_max}")
+        
+        # DJ settings if enabled
+        if self.dj_mode:
+            parts.append("DJ:ON")
+            if self.target_camelot:
+                parts.append(f"Key:{self.target_camelot}")
+        if self.min_tempo or self.max_tempo:
+            parts.append(f"BPM:{self.min_tempo or 0}-{self.max_tempo or 999}")
+        
+        # Filters
+        if self.release_year_min or self.release_year_max:
+            parts.append(f"Era:{self.release_year_min or '?'}-{self.release_year_max or '?'}")
+        if self.vocal_mode:
+            parts.append(f"Vocal:{self.vocal_mode}")
+        if self.mode_filter:
+            parts.append(f"Mode:{self.mode_filter}")
+        if self.max_speechiness and self.max_speechiness < 1.0:
+            parts.append(f"MaxSpeech:{self.max_speechiness}")
+        
+        if compact:
+            return " | ".join(parts)
+        else:
+            # Multi-line format for txt file
+            lines = [
+                f"Settings:",
+                f"  Moods: {self.n_clusters} | Recency: {self.recency_decay} | Range Penalty: {self.range_penalty_strength}",
+                f"  Genre Mode: {self.genre_match_mode} | Popularity: {self.popularity_min}-{self.popularity_max}",
+            ]
+            if self.dj_mode:
+                lines.append(f"  DJ Mode: ON | Target Key: {self.target_camelot or 'Any'}")
+            if self.min_tempo or self.max_tempo:
+                lines.append(f"  Tempo: {self.min_tempo or 0}-{self.max_tempo or 999} BPM")
+            if self.release_year_min or self.release_year_max:
+                lines.append(f"  Era: {self.release_year_min or '?'}-{self.release_year_max or '?'}")
+            return "\n".join(lines)
+
     @classmethod
     def from_dict(cls, cfg: dict[str, Any]) -> 'RecommenderConfig':
         """Create config from dictionary, using defaults for missing keys."""
@@ -2066,6 +2119,7 @@ if __name__ == "__main__":
                     f.write(f"DIY Discovery - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
                     f.write("=" * 50 + "\n\n")
                     f.write(f"Generated from your top genres: {', '.join(fav_genres)}\n\n")
+                    f.write(config.get_summary(compact=False) + "\n\n")
                     
                     f.write(f"MOOD-MATCHED TRACKS ({len(top_ranked)})\n")
                     f.write("-" * 40 + "\n")
@@ -2112,7 +2166,7 @@ if __name__ == "__main__":
                             user=user_id,
                             name=playlist_name,
                             public=True,
-                            description=f"Hidden gems matching your taste. Genres: {', '.join(fav_genres)}"
+                            description=f"{config.get_summary(compact=True)} | Genres: {', '.join(fav_genres[:3])}"[:300]
                         )
                         
                         track_uris = [f"spotify:track:{t['id']}" for t in all_tracks]

@@ -1049,9 +1049,12 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">Output Configuration</span>
-                        Controls how many tracks appear in your final playlist. <strong>Total Tracks</strong> sets the
-                        playlist size. <strong>Serendipity</strong> adds wild-card tracks outside your usual taste.
-                        <strong>Saved Cap</strong> limits how many of your saved tracks to check for duplicates.
+                        <strong>Total Tracks</strong> (5-100): Final playlist size. 20-35 is typical for a listening
+                        session.<br><br>
+                        <strong>Serendipity</strong> (0-10): Wild-card slots filled with tracks outside your usual
+                        genres. Higher = more surprises. Set to 0 for strict matching.<br><br>
+                        <strong>Saved Cap</strong> (100-2000): How many of your saved/liked tracks to check when
+                        filtering duplicates. Higher = fewer repeats but slower.
                     </div>
                 </div>
             </div>
@@ -1102,10 +1105,13 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">Candidate Pool Sizes</span>
-                        Sets the size of track pools before final selection. <strong>Genre Pool</strong> = tracks from
-                        matching genres. <strong>Related Pool</strong> = tracks from similar artists. <strong>Profile
-                            Limit</strong> = your top tracks used to build your taste profile. Larger pools = more
-                        variety but slower.
+                        Controls how many tracks to consider before final selection.<br><br>
+                        <strong>Genre Pool</strong> (50-500): Tracks pulled from your preferred genres. More = better
+                        variety but slower. 200 is a good balance.<br><br>
+                        <strong>Related Pool</strong> (20-200): Tracks from artists similar to your favorites. These
+                        often surface hidden gems.<br><br>
+                        <strong>Profile Limit</strong> (50-500): Your top tracks used to build your taste profile. More
+                        = more accurate moods but slower startup.
                     </div>
                 </div>
             </div>
@@ -1158,10 +1164,14 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">AI Taste Analysis</span>
-                        <strong>Moods</strong> = distinct listening profiles detected (e.g., workout vs. chill).
-                        <strong>Recency</strong> = how much to favor recent listening habits vs. all-time. <strong>Range
-                            Penalty</strong> = penalizes tracks too far from your taste. <strong>Genre Mode</strong> =
-                        how strictly to match genres (exact, prefix, or fuzzy).
+                        <strong>Moods</strong> (1-8): Number of distinct listening profiles to detect (workout, chill,
+                        focus, etc.). More moods = more diverse results. Start with 3.<br><br>
+                        <strong>Recency</strong> (1.0-5.0): How much to favor recent listening. 1.0 = equal weight to
+                        all history. 3.0+ = heavily favor last few weeks.<br><br>
+                        <strong>Range Penalty</strong> (0.0-0.3): Penalizes tracks that stray too far from any of your
+                        moods. Higher = stricter matching. 0.1 is gentle.<br><br>
+                        <strong>Genre Mode</strong>: exact = "indie rock" only. prefix = "indie" matches "indie rock",
+                        "indie pop". fuzzy = loose matching.
                     </div>
                 </div>
             </div>
@@ -1224,10 +1234,16 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">Data Source Settings</span>
-                        <strong>Local History</strong> = use your downloaded Spotify data instead of API (more
-                        accurate, private). <strong>API Artists</strong> = use Spotify's related artists API instead
-                        of genre-based matching. <strong>History Path</strong> = folder containing your extended
-                        streaming history JSON files.
+                        <strong>Local History</strong>: Use your downloaded Spotify Extended Streaming History (more
+                        accurate, includes play counts and timestamps). Recommended ON.<br><br>
+                        <strong>API Artists</strong>: Use Spotify's "related artists" API instead of genre-overlap
+                        matching. API is better for niche genres, genre-matching is better for diverse tastes.<br><br>
+                        <strong>Penalize Skips</strong>: Reduce score for tracks you've historically skipped. Helps
+                        filter out false positives.<br><br>
+                        <strong>Rediscovery</strong>: Include tracks you haven't played recently. Great for revisiting
+                        forgotten favorites.<br><br>
+                        <strong>Seed Playlist</strong>: Override your history and use a specific playlist as the taste
+                        source. Great for "find me more like this playlist".
                     </div>
                 </div>
             </div>
@@ -1264,6 +1280,11 @@
                     <div class="input-label">History Path</div>
                     <input type="text" class="text-input" id="history_path"
                         value="my_spotify_data(2)/Spotify Extended Streaming History">
+                </div>
+                <div class="input-group" style="margin-top: 12px;">
+                    <div class="input-label">Seed Playlist (Optional - overrides history)</div>
+                    <input type="text" class="text-input" id="seed_playlist"
+                        placeholder="Paste Spotify playlist URL or ID">
                 </div>
                 <div class="knob-group orange">
                     <div class="knob-label">Top Artists</div>
@@ -1333,10 +1354,15 @@
             <div class="module-title">Timeframe & Filters</div>
             <div class="module-help">?
                 <div class="tooltip">
-                    <span class="tooltip-title">History Control</span>
-                    <strong>Start/End Date</strong> = only analyze listening history within this range.
-                    <strong>Decade</strong> = Filter recommended tracks by release year.
-                    <strong>Blocklist</strong> = Exclude specific genres.
+                    <span class="tooltip-title">History & Track Filters</span>
+                    <strong>Decade/Era</strong>: Filter recommendations by release year. "Any Era" = no filter.<br><br>
+                    <strong>Start/End Date</strong>: Only analyze listening history within this date range. Useful for
+                    seasonal preferences (summer playlists, etc.).<br><br>
+                    <strong>Blocklist</strong>: Comma-separated genres to exclude (e.g., "country, christmas, kids").
+                    Case-insensitive.<br><br>
+                    <strong>Acoustic/Liveness</strong>: Filter by recording type. "Any" = no filter.<br><br>
+                    <strong>Max Speechiness</strong>: Filter out spoken word (0.0-1.0). 0.3 removes most
+                    podcasts/comedy.
                 </div>
             </div>
         </div>
@@ -1419,10 +1445,16 @@
             <div class="module-help">?
                 <div class="tooltip">
                     <span class="tooltip-title">Discovery vs. Mainstream</span>
-                    Controls the popularity range for candidate tracks (0-100 scale). Lower values =
-                    underground/obscure. Higher values = mainstream hits. <strong>Min Play</strong> = skip plays
-                    shorter than this (filters skipped tracks). Separate ranges for genre matches, similar
-                    artists, and wild card picks.
+                    Filter tracks by Spotify popularity score (0 = unknown, 100 = #1 hit).<br><br>
+                    <strong>Min Play (ms)</strong>: Ignore plays shorter than this when building your profile. 30000 (30
+                    sec) filters skipped tracks.<br><br>
+                    <strong>Genre Min/Max</strong>: Popularity range for genre-matched candidates. 5-50 surfaces hidden
+                    gems.<br><br>
+                    <strong>Similar Min/Max</strong>: Range for similar-artist tracks. Can be slightly higher (5-60)
+                    since these are already filtered by artist quality.<br><br>
+                    <strong>Wild Min/Max</strong>: Range for serendipity picks. 10-60 balances discovery with
+                    quality.<br><br>
+                    💡 <em>Lower max = more obscure. Higher min = excludes unknown artists.</em>
                 </div>
             </div>
         </div>
@@ -1517,9 +1549,15 @@
             <div class="module-help">?
                 <div class="tooltip">
                     <span class="tooltip-title">Harmonic Mixing & Tempo</span>
-                    <strong>Harmonic Mix</strong> = Prioritize keys compatible with a target key.
-                    <strong>Smart BPM</strong> = Match 70bpm with 140bpm.
-                    <strong>Camelot</strong> = Target specific key (e.g. 8A).
+                    Tools for DJs and seamless playlists.<br><br>
+                    <strong>Harmonic Mix</strong>: When ON, strongly boosts tracks in compatible keys using the Camelot
+                    wheel. Adjacent keys (8A→7A, 8A→9A) and relative major/minor (8A→8B) mix smoothly.<br><br>
+                    <strong>Smart BPM</strong>: Treats 70 bpm and 140 bpm as equivalent (half/double time). Essential
+                    for drum & bass, hip-hop transitions.<br><br>
+                    <strong>Target Key</strong>: Lock recommendations to a specific key. "Any" = no filter.<br><br>
+                    <strong>Mode Filter</strong>: Major only (happy), Minor only (moody), or Both.<br><br>
+                    <strong>Min/Max Tempo</strong>: Filter by BPM range. Leave at 0/0 for no filter.<br><br>
+                    💡 <em>For DJ sets: Enable Harmonic Mix + set a Target Key + Smart BPM.</em>
                 </div>
             </div>
         </div>
@@ -1632,9 +1670,11 @@
             <div class="module-help">?
                 <div class="tooltip">
                     <span class="tooltip-title">Playlist Destinations</span>
-                    Choose where to save your generated playlist. <strong>Spotify</strong> creates/updates a
-                    playlist in your Spotify account. <strong>Tidal</strong> syncs to your Tidal account using
-                    spotify_to_tidal.
+                    <strong>Save to Spotify</strong>: Creates or updates a playlist called "DIY Discovery" in your
+                    Spotify account. Non-destructive (won't delete existing playlists).<br><br>
+                    <strong>Sync to Tidal</strong>: Copies the playlist to Tidal using spotify_to_tidal. Requires
+                    one-time Tidal login setup. Tracks not on Tidal are skipped.<br><br>
+                    💡 <em>A tracklist text file is always saved to your home folder regardless of these settings.</em>
                 </div>
             </div>
         </div>
@@ -1658,11 +1698,19 @@
             <div class="module-title">Audio Feature Mixer</div>
             <div class="module-help">?
                 <div class="tooltip">
-                    <span class="tooltip-title">Audio Similarity Weights</span>
-                    Controls how much each audio characteristic matters when matching tracks. High = prioritize
-                    this feature. Low = less important. <strong>Energy</strong> = intensity.
-                    <strong>Valence</strong> = happiness. <strong>Danceability</strong> = rhythm.
-                    <strong>Acousticness</strong> = unplugged sound.
+                    <span class="tooltip-title">Audio Feature Weights</span>
+                    Adjust how much each audio characteristic matters when matching tracks. 0 = ignore, 0.5 = low, 1.0 =
+                    normal, 1.5 = high priority.<br><br>
+                    <strong>Energy</strong>: Intensity and activity level (loud, fast, noisy = high).<br>
+                    <strong>Valence</strong>: Musical positiveness (happy, cheerful = high; sad, angry = low).<br>
+                    <strong>Danceability</strong>: Rhythm stability, beat strength, groove.<br>
+                    <strong>Acousticness</strong>: Confidence the track is acoustic (unplugged).<br>
+                    <strong>Tempo</strong>: BPM matching importance.<br>
+                    <strong>Loudness</strong>: Overall volume level.<br>
+                    <strong>Speechiness</strong>: Presence of spoken words.<br>
+                    <strong>Instrumentalness</strong>: Likelihood of no vocals.<br>
+                    <strong>Liveness</strong>: Presence of live audience.<br><br>
+                    💡 <em>Boost Energy+Valence for workout playlists. Boost Acousticness for unplugged vibes.</em>
                 </div>
             </div>
         </div>
@@ -2428,12 +2476,14 @@ recommender:
                 const yaml = generateYaml();
                 const saveToSpotify = document.getElementById('save_to_spotify').checked;
                 const saveToTidal = document.getElementById('save_to_tidal').checked;
+                const seedPlaylist = document.getElementById('seed_playlist').value.trim();
 
                 // Send config with options
                 const payload = JSON.stringify({
                     config: yaml,
                     save_spotify: saveToSpotify,
-                    save_tidal: saveToTidal
+                    save_tidal: saveToTidal,
+                    seed_playlist: seedPlaylist || null
                 });
 
                 const response = await fetch('/api/run-stream', {
