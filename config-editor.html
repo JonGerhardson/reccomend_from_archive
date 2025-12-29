@@ -1,0 +1,2105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Recommender Config</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-rack: #1a1a1a;
+            --bg-panel: #2a2a2a;
+            --bg-module: #1e1e1e;
+            --bg-knob: #0d0d0d;
+            --accent-green: #1db954;
+            --accent-orange: #f97316;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #a855f7;
+            --accent-pink: #ec4899;
+            --accent-yellow: #eab308;
+            --text-primary: #ffffff;
+            --text-secondary: #a3a3a3;
+            --text-label: #737373;
+            --border-dark: #333;
+            --led-on: #1db954;
+            --led-off: #2d4a36;
+            --screw: #404040;
+            --knob-ring: #3a3a3a;
+            --shadow-deep: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Header - Rack Mount Style */
+        .header {
+            background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+            border-bottom: 3px solid #0d0d0d;
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-deep);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo-badge {
+            background: linear-gradient(135deg, var(--accent-green) 0%, #15803d 100%);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.875rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            box-shadow: 0 0 20px rgba(29, 185, 84, 0.3);
+        }
+
+        .logo-text {
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent-green);
+            color: #000;
+            box-shadow: 0 0 20px rgba(29, 185, 84, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: #1ed760;
+            box-shadow: 0 0 30px rgba(29, 185, 84, 0.5);
+        }
+
+        .btn-secondary {
+            background: #3a3a3a;
+            color: var(--text-primary);
+            border: 1px solid #4a4a4a;
+        }
+
+        .btn-secondary:hover {
+            background: #4a4a4a;
+        }
+
+        .btn-randomize {
+            background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+        }
+
+        .btn-randomize:hover {
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.5);
+            transform: scale(1.02);
+        }
+
+        .btn-randomize .dice-icon {
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .btn-randomize:hover .dice-icon {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: rotate(0deg);
+            }
+
+            25% {
+                transform: rotate(-15deg);
+            }
+
+            75% {
+                transform: rotate(15deg);
+            }
+        }
+
+        .btn-reset {
+            background: #3a3a3a;
+            color: var(--text-secondary);
+            border: 1px solid #4a4a4a;
+        }
+
+        .btn-reset:hover {
+            background: #4a4a4a;
+            color: var(--text-primary);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+        }
+
+        .btn-reset .reset-icon {
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .btn-reset:hover .reset-icon {
+            animation: spin-back 0.4s ease-out;
+        }
+
+        @keyframes spin-back {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(-360deg);
+            }
+        }
+
+        .btn-run {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-run:hover {
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.5);
+            transform: scale(1.02);
+        }
+
+        .btn-run:disabled {
+            background: #374151;
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-run.running .play-icon {
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Output Modal */
+        .output-modal .modal {
+            max-width: 900px;
+            width: 95%;
+        }
+
+        .output-modal .modal-body {
+            max-height: 60vh;
+        }
+
+        .output-modal pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.8125rem;
+            line-height: 1.5;
+        }
+
+        .output-modal .status-running {
+            color: var(--accent-yellow);
+        }
+
+        .output-modal .status-success {
+            color: var(--accent-green);
+        }
+
+        .output-modal .status-error {
+            color: var(--accent-pink);
+        }
+
+        /* Rack Container */
+        .rack {
+            max-width: 1600px;
+            margin: 32px auto;
+            padding: 0 24px;
+        }
+
+        /* Module Panel */
+        .module {
+            background: linear-gradient(180deg, #2d2d2d 0%, #1e1e1e 100%);
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-deep), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Rack mount holes */
+        .module::before,
+        .module::after {
+            content: '';
+            position: absolute;
+            top: 12px;
+            width: 8px;
+            height: 8px;
+            background: radial-gradient(circle, #1a1a1a 40%, #3a3a3a 60%);
+            border-radius: 50%;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .module::before {
+            left: 12px;
+        }
+
+        .module::after {
+            right: 12px;
+        }
+
+        .module-header {
+            padding: 16px 40px;
+            background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .module-led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--led-on);
+            box-shadow: 0 0 8px var(--led-on), 0 0 16px var(--led-on);
+        }
+
+        .module-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        /* Help Icon & Tooltip */
+        .module-help {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2a2a2a;
+            border: 1px solid #4a4a4a;
+            color: var(--text-label);
+            font-size: 0.6875rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+            position: relative;
+            transition: all 0.15s ease;
+            margin-right: 20px;
+        }
+
+        .module-help:hover {
+            background: #3a3a3a;
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .module-help .tooltip {
+            position: absolute;
+            top: calc(100% + 12px);
+            right: -10px;
+            width: 280px;
+            background: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            padding: 14px 16px;
+            font-size: 0.75rem;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: normal;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.2s ease;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .module-help .tooltip::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            right: 16px;
+            width: 10px;
+            height: 10px;
+            background: #1a1a1a;
+            border-left: 1px solid #3a3a3a;
+            border-top: 1px solid #3a3a3a;
+            transform: rotate(45deg);
+        }
+
+        .module-help:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .tooltip-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .module-body {
+            padding: 32px 40px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            justify-content: flex-start;
+        }
+
+        /* Knob Container */
+        .knob-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 100px;
+        }
+
+        .knob-label {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-label);
+            margin-bottom: 12px;
+            text-align: center;
+            max-width: 80px;
+        }
+
+        /* Rotary Knob */
+        .knob {
+            width: 64px;
+            height: 64px;
+            position: relative;
+            cursor: grab;
+        }
+
+        .knob:active {
+            cursor: grabbing;
+        }
+
+        .knob-outer {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%);
+            box-shadow:
+                0 4px 12px rgba(0, 0, 0, 0.5),
+                inset 0 2px 4px rgba(0, 0, 0, 0.3),
+                inset 0 -1px 2px rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .knob-inner {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 100%);
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.4),
+                inset 0 1px 1px rgba(255, 255, 255, 0.08);
+            position: relative;
+            transition: transform 0.05s ease-out;
+        }
+
+        .knob-indicator {
+            position: absolute;
+            top: 6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 3px;
+            height: 10px;
+            background: var(--accent-green);
+            border-radius: 2px;
+            box-shadow: 0 0 6px var(--accent-green);
+        }
+
+        .knob-inner.purple .knob-indicator {
+            background: var(--accent-purple);
+            box-shadow: 0 0 6px var(--accent-purple);
+        }
+
+        .knob-inner.cyan .knob-indicator {
+            background: var(--accent-cyan);
+            box-shadow: 0 0 6px var(--accent-cyan);
+        }
+
+        .knob-inner.orange .knob-indicator {
+            background: var(--accent-orange);
+            box-shadow: 0 0 6px var(--accent-orange);
+        }
+
+        .knob-inner.pink .knob-indicator {
+            background: var(--accent-pink);
+            box-shadow: 0 0 6px var(--accent-pink);
+        }
+
+        .knob-inner.yellow .knob-indicator {
+            background: var(--accent-yellow);
+            box-shadow: 0 0 6px var(--accent-yellow);
+        }
+
+        /* Tick marks around knob */
+        .knob-ticks {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            top: -8px;
+            left: -8px;
+        }
+
+        .knob-tick {
+            position: absolute;
+            width: 2px;
+            height: 6px;
+            background: #4a4a4a;
+            left: 50%;
+            transform-origin: bottom center;
+        }
+
+        .knob-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent-green);
+            margin-top: 10px;
+            background: #0d0d0d;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #2a2a2a;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .knob-group.purple .knob-value {
+            color: var(--accent-purple);
+        }
+
+        .knob-group.cyan .knob-value {
+            color: var(--accent-cyan);
+        }
+
+        .knob-group.orange .knob-value {
+            color: var(--accent-orange);
+        }
+
+        .knob-group.pink .knob-value {
+            color: var(--accent-pink);
+        }
+
+        .knob-group.yellow .knob-value {
+            color: var(--accent-yellow);
+        }
+
+        /* Toggle Switch */
+        .toggle-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 80px;
+        }
+
+        .toggle-label {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-label);
+            margin-bottom: 12px;
+            text-align: center;
+            max-width: 80px;
+        }
+
+        .toggle-switch {
+            width: 24px;
+            height: 40px;
+            background: linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 100%);
+            border-radius: 4px;
+            box-shadow:
+                inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                0 2px 4px rgba(0, 0, 0, 0.3);
+            position: relative;
+            cursor: pointer;
+            border: 1px solid #3a3a3a;
+        }
+
+        .toggle-handle {
+            position: absolute;
+            width: 20px;
+            height: 16px;
+            background: linear-gradient(180deg, #5a5a5a 0%, #3a3a3a 100%);
+            border-radius: 3px;
+            left: 1px;
+            top: 2px;
+            transition: top 0.15s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        .toggle-switch.on .toggle-handle {
+            top: 20px;
+        }
+
+        .toggle-led {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--led-off);
+            margin-top: 12px;
+            transition: all 0.15s ease;
+        }
+
+        .toggle-switch.on+.toggle-led {
+            background: var(--led-on);
+            box-shadow: 0 0 8px var(--led-on);
+        }
+
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+        }
+
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            appearance: none;
+            background: #0d0d0d;
+            border: 2px solid #3a3a3a;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.15s ease;
+        }
+
+        .checkbox:checked {
+            background: var(--accent-green);
+            border-color: var(--accent-green);
+        }
+
+        .checkbox:checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #000;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .checkbox-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .checkbox-group.spotify .checkbox:checked {
+            background: #1db954;
+            border-color: #1db954;
+        }
+
+        .checkbox-group.tidal .checkbox:checked {
+            background: #00ffff;
+            border-color: #00ffff;
+        }
+
+        /* Dropdown/Select */
+        .select-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 140px;
+        }
+
+        .select-label {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-label);
+            margin-bottom: 8px;
+        }
+
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select-display {
+            background: #0d0d0d;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            padding: 10px 32px 10px 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: var(--accent-cyan);
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .select-display::after {
+            content: '▼';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.5rem;
+            color: var(--text-label);
+        }
+
+        select {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* Text Input */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 280px;
+        }
+
+        .input-label {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-label);
+            margin-bottom: 8px;
+        }
+
+        .text-input {
+            background: #0d0d0d;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            padding: 10px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8125rem;
+            color: var(--text-primary);
+            transition: all 0.15s ease;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: var(--accent-green);
+            box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.2);
+        }
+
+        /* Feature Mixer Section */
+        .mixer-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+            gap: 8px;
+            padding: 24px;
+            background: linear-gradient(180deg, #1a1a1a 0%, #151515 100%);
+            border-radius: 6px;
+            border: 1px solid #2a2a2a;
+            width: 100%;
+        }
+
+        .fader-channel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px 8px;
+            background: linear-gradient(180deg, #252525 0%, #1a1a1a 100%);
+            border-radius: 4px;
+            border: 1px solid #333;
+        }
+
+        .fader-label {
+            font-size: 0.5625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-label);
+            margin-bottom: 12px;
+            text-align: center;
+            height: 28px;
+            display: flex;
+            align-items: center;
+        }
+
+        .fader-track {
+            width: 8px;
+            height: 120px;
+            background: linear-gradient(180deg, #0d0d0d 0%, #1a1a1a 100%);
+            border-radius: 4px;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .fader-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(180deg, var(--accent-green) 0%, #15803d 100%);
+            border-radius: 0 0 4px 4px;
+            transition: height 0.1s ease-out;
+        }
+
+        .fader-handle {
+            position: absolute;
+            width: 24px;
+            height: 12px;
+            background: linear-gradient(180deg, #6a6a6a 0%, #4a4a4a 100%);
+            border-radius: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            cursor: grab;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+            transition: bottom 0.1s ease-out;
+        }
+
+        .fader-handle:active {
+            cursor: grabbing;
+        }
+
+        .fader-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--accent-green);
+            margin-top: 12px;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--bg-panel);
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            box-shadow: var(--shadow-deep);
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .modal-overlay.show .modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+        }
+
+        .modal-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            max-height: calc(80vh - 120px);
+        }
+
+        .modal-body pre {
+            background: #0d0d0d;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            overflow-x: auto;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #2a2a2a;
+            border: 1px solid var(--accent-green);
+            border-radius: 6px;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: var(--shadow-deep), 0 0 20px rgba(29, 185, 84, 0.2);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast-icon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+
+        .toast-text {
+            font-size: 0.8125rem;
+            font-weight: 500;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                padding: 12px 16px;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .header-controls {
+                width: 100%;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .header-controls .btn {
+                padding: 8px 12px;
+                font-size: 0.75rem;
+            }
+
+            .module-body {
+                padding: 24px 20px;
+                justify-content: center;
+            }
+
+            .mixer-section {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo-text {
+                display: none;
+            }
+
+            .header-controls .btn {
+                padding: 8px 10px;
+                font-size: 0.6875rem;
+            }
+
+            /* Icon-only buttons on very small screens */
+            .header-controls .btn span:not(.dice-icon):not(.reset-icon) {
+                display: none;
+            }
+
+            .rack {
+                padding: 0 12px;
+            }
+
+            .module-header {
+                padding: 12px 24px;
+            }
+
+            .module-body {
+                padding: 20px 16px;
+                gap: 16px;
+            }
+
+            .knob-group {
+                min-width: 80px;
+            }
+
+            .knob {
+                width: 56px;
+                height: 56px;
+            }
+
+            .knob-inner {
+                width: 42px;
+                height: 42px;
+            }
+
+            .mixer-section {
+                grid-template-columns: repeat(3, 1fr);
+                padding: 16px 12px;
+            }
+
+            .fader-track {
+                height: 100px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <div class="logo-badge">Spot</div>
+            <div class="logo-text">recommender.config</div>
+        </div>
+        <div class="header-controls">
+            <button class="btn btn-run" id="runBtn" onclick="runRecommender()"
+                title="Run recommender with current settings">
+                <span class="play-icon">▶</span> Run
+            </button>
+            <button class="btn btn-randomize" onclick="randomizeAll()" title="Randomize all settings">
+                <span class="dice-icon">🎲</span> Randomize
+            </button>
+            <button class="btn btn-reset" onclick="resetToDefaults()" title="Reset to default values">
+                <span class="reset-icon">↺</span> Reset
+            </button>
+            <button class="btn btn-secondary" onclick="showPreview()">Preview YAML</button>
+            <button class="btn btn-secondary" onclick="loadConfig()">Load</button>
+            <button class="btn btn-primary" onclick="saveConfig()">Save Config</button>
+        </div>
+    </header>
+
+    <div class="rack">
+        <!-- Track Counts Module -->
+        <div class="module" id="track-counts">
+            <div class="module-header">
+                <div class="module-led"></div>
+                <div class="module-title">Track Counts</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">Output Configuration</span>
+                        Controls how many tracks appear in your final playlist. <strong>Total Tracks</strong> sets the
+                        playlist size. <strong>Serendipity</strong> adds wild-card tracks outside your usual taste.
+                        <strong>Saved Cap</strong> limits how many of your saved tracks to check for duplicates.
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="knob-group">
+                    <div class="knob-label">Total Tracks</div>
+                    <div class="knob" data-id="total_tracks" data-min="5" data-max="100" data-value="35">
+                        <div class="knob-outer">
+                            <div class="knob-inner">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">35</div>
+                </div>
+                <div class="knob-group">
+                    <div class="knob-label">Serendipity</div>
+                    <div class="knob" data-id="serendipity_slots" data-min="0" data-max="15" data-value="2">
+                        <div class="knob-outer">
+                            <div class="knob-inner">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">2</div>
+                </div>
+                <div class="knob-group">
+                    <div class="knob-label">Saved Cap</div>
+                    <div class="knob" data-id="saved_tracks_cap" data-min="50" data-max="2000" data-value="500"
+                        data-step="50">
+                        <div class="knob-outer">
+                            <div class="knob-inner">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">500</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Candidate Limits Module -->
+        <div class="module" id="candidates">
+            <div class="module-header">
+                <div class="module-led"
+                    style="background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple);"></div>
+                <div class="module-title">Candidate Limits</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">Candidate Pool Sizes</span>
+                        Sets the size of track pools before final selection. <strong>Genre Pool</strong> = tracks from
+                        matching genres. <strong>Related Pool</strong> = tracks from similar artists. <strong>Profile
+                            Limit</strong> = your top tracks used to build your taste profile. Larger pools = more
+                        variety but slower.
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="knob-group purple">
+                    <div class="knob-label">Genre Pool</div>
+                    <div class="knob" data-id="genre_candidates_limit" data-min="50" data-max="500" data-value="200"
+                        data-step="10">
+                        <div class="knob-outer">
+                            <div class="knob-inner purple">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">200</div>
+                </div>
+                <div class="knob-group purple">
+                    <div class="knob-label">Related Pool</div>
+                    <div class="knob" data-id="related_candidates_limit" data-min="20" data-max="200" data-value="80"
+                        data-step="10">
+                        <div class="knob-outer">
+                            <div class="knob-inner purple">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">80</div>
+                </div>
+                <div class="knob-group purple">
+                    <div class="knob-label">Profile Limit</div>
+                    <div class="knob" data-id="profile_tracks_limit" data-min="50" data-max="500" data-value="150"
+                        data-step="10">
+                        <div class="knob-outer">
+                            <div class="knob-inner purple">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">150</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clustering Module -->
+        <div class="module" id="clustering">
+            <div class="module-header">
+                <div class="module-led" style="background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan);">
+                </div>
+                <div class="module-title">Clustering & Matching</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">AI Taste Analysis</span>
+                        <strong>Moods</strong> = distinct listening profiles detected (e.g., workout vs. chill).
+                        <strong>Recency</strong> = how much to favor recent listening habits vs. all-time. <strong>Range
+                            Penalty</strong> = penalizes tracks too far from your taste. <strong>Genre Mode</strong> =
+                        how strictly to match genres (exact, prefix, or fuzzy).
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="knob-group cyan">
+                    <div class="knob-label">Moods</div>
+                    <div class="knob" data-id="n_clusters" data-min="1" data-max="8" data-value="3">
+                        <div class="knob-outer">
+                            <div class="knob-inner cyan">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">3</div>
+                </div>
+                <div class="knob-group cyan">
+                    <div class="knob-label">Recency</div>
+                    <div class="knob" data-id="recency_decay" data-min="1" data-max="5" data-value="2" data-step="0.1"
+                        data-decimals="1">
+                        <div class="knob-outer">
+                            <div class="knob-inner cyan">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">2.0</div>
+                </div>
+                <div class="knob-group cyan">
+                    <div class="knob-label">Range Penalty</div>
+                    <div class="knob" data-id="range_penalty_strength" data-min="0" data-max="0.5" data-value="0.1"
+                        data-step="0.05" data-decimals="2">
+                        <div class="knob-outer">
+                            <div class="knob-inner cyan">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">0.10</div>
+                </div>
+                <div class="select-group">
+                    <div class="select-label">Genre Mode</div>
+                    <div class="select-wrapper">
+                        <div class="select-display" id="genre_match_mode_display">Prefix</div>
+                        <select id="genre_match_mode" onchange="updateSelectDisplay(this)">
+                            <option value="exact">Exact</option>
+                            <option value="prefix" selected>Prefix</option>
+                            <option value="fuzzy">Fuzzy</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Local Data Module -->
+        <div class="module" id="local-data">
+            <div class="module-header">
+                <div class="module-led"
+                    style="background: var(--accent-orange); box-shadow: 0 0 8px var(--accent-orange);"></div>
+                <div class="module-title">Local Data</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">Data Source Settings</span>
+                        <strong>Local History</strong> = use your downloaded Spotify data instead of API (more
+                        accurate, private). <strong>API Artists</strong> = use Spotify's related artists API instead
+                        of genre-based matching. <strong>History Path</strong> = folder containing your extended
+                        streaming history JSON files.
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="toggle-group">
+                    <div class="toggle-label">Local History</div>
+                    <div class="toggle-switch on" data-id="use_local_history" onclick="toggleSwitch(this)">
+                        <div class="toggle-handle"></div>
+                    </div>
+                    <div class="toggle-led"></div>
+                </div>
+                <div class="toggle-group">
+                    <div class="toggle-label">API Artists</div>
+                    <div class="toggle-switch" data-id="use_api_related_artists" onclick="toggleSwitch(this)">
+                        <div class="toggle-handle"></div>
+                    </div>
+                    <div class="toggle-led"></div>
+                </div>
+                <div class="input-group">
+                    <div class="input-label">History Path</div>
+                    <input type="text" class="text-input" id="history_path"
+                        value="my_spotify_data/Spotify Extended Streaming History">
+                </div>
+                <div class="knob-group orange">
+                    <div class="knob-label">Top Artists</div>
+                    <div class="knob" data-id="top_artists_limit" data-min="5" data-max="50" data-value="20">
+                        <div class="knob-outer">
+                            <div class="knob-inner orange">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">20</div>
+                </div>
+                <div class="knob-group orange">
+                    <div class="knob-label">Console Preview</div>
+                    <div class="knob" data-id="console_preview_count" data-min="5" data-max="50" data-value="10">
+                        <div class="knob-outer">
+                            <div class="knob-inner orange">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">10</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Thresholds Module -->
+        <div class="module" id="thresholds">
+            <div class="module-header">
+                <div class="module-led" style="background: var(--accent-pink); box-shadow: 0 0 8px var(--accent-pink);">
+                </div>
+                <div class="module-title">Popularity Thresholds</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">Discovery vs. Mainstream</span>
+                        Controls the popularity range for candidate tracks (0-100 scale). Lower values =
+                        underground/obscure. Higher values = mainstream hits. <strong>Min Play</strong> = skip plays
+                        shorter than this (filters skipped tracks). Separate ranges for genre matches, similar
+                        artists, and wild card picks.
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="knob-group pink">
+                    <div class="knob-label">Min Play (ms)</div>
+                    <div class="knob" data-id="min_play_ms" data-min="10000" data-max="120000" data-value="30000"
+                        data-step="1000">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">30000</div>
+                </div>
+                <div class="knob-group pink">
+                    <div class="knob-label">Genre Min</div>
+                    <div class="knob" data-id="popularity_min" data-min="0" data-max="50" data-value="5">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">5</div>
+                </div>
+                <div class="knob-group pink">
+                    <div class="knob-label">Genre Max</div>
+                    <div class="knob" data-id="popularity_max" data-min="20" data-max="100" data-value="50">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">50</div>
+                </div>
+                <div class="knob-group pink">
+                    <div class="knob-label">Similar Min</div>
+                    <div class="knob" data-id="similar_popularity_min" data-min="0" data-max="50" data-value="5">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">5</div>
+                </div>
+                <div class="knob-group pink">
+                    <div class="knob-label">Similar Max</div>
+                    <div class="knob" data-id="similar_popularity_max" data-min="20" data-max="100" data-value="60">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">60</div>
+                </div>
+                <div class="knob-group pink">
+                    <div class="knob-label">Wild Min</div>
+                    <div class="knob" data-id="serendipity_popularity_min" data-min="0" data-max="50" data-value="10">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">10</div>
+                </div>
+                <div class="knob-group pink">
+                    <div class="knob-label">Wild Max</div>
+                    <div class="knob" data-id="serendipity_popularity_max" data-min="20" data-max="100" data-value="60">
+                        <div class="knob-outer">
+                            <div class="knob-inner pink">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">60</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Output Options Module -->
+        <div class="module" id="output-options">
+            <div class="module-header">
+                <div class="module-led"
+                    style="background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green);"></div>
+                <div class="module-title">Output Options</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">Playlist Destinations</span>
+                        Choose where to save your generated playlist. <strong>Spotify</strong> creates/updates a
+                        playlist in your Spotify account. <strong>Tidal</strong> syncs to your Tidal account using
+                        spotify_to_tidal.
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="checkbox-group spotify">
+                    <input type="checkbox" class="checkbox" id="save_to_spotify" checked>
+                    <label class="checkbox-label" for="save_to_spotify">Save to Spotify</label>
+                </div>
+                <div class="checkbox-group tidal">
+                    <input type="checkbox" class="checkbox" id="save_to_tidal" checked>
+                    <label class="checkbox-label" for="save_to_tidal">Sync to Tidal</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature Weights Mixer -->
+        <div class="module" id="feature-weights">
+            <div class="module-header">
+                <div class="module-led"
+                    style="background: var(--accent-yellow); box-shadow: 0 0 8px var(--accent-yellow);"></div>
+                <div class="module-title">Audio Feature Mixer</div>
+                <div class="module-help">?
+                    <div class="tooltip">
+                        <span class="tooltip-title">Audio Similarity Weights</span>
+                        Controls how much each audio characteristic matters when matching tracks. High = prioritize
+                        this feature. Low = less important. <strong>Energy</strong> = intensity.
+                        <strong>Valence</strong> = happiness. <strong>Danceability</strong> = rhythm.
+                        <strong>Acousticness</strong> = unplugged sound.
+                    </div>
+                </div>
+            </div>
+            <div class="module-body">
+                <div class="mixer-section" id="mixer">
+                    <!-- Faders generated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="previewModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Config Output</h3>
+                <button class="btn btn-secondary" onclick="closePreview()" style="padding: 6px 12px;">✕</button>
+            </div>
+            <div class="modal-body">
+                <pre id="yamlPreview"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="copyToClipboard()">Copy</button>
+                <button class="btn btn-primary" onclick="downloadYaml()">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <div class="toast-icon"></div>
+        <div class="toast-text" id="toastText">Saved</div>
+    </div>
+
+    <!-- Output Modal -->
+    <div class="modal-overlay output-modal" id="outputModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><span id="outputStatus">Running...</span></h3>
+                <button class="btn btn-secondary" onclick="closeOutput()" style="padding: 6px 12px;">✕</button>
+            </div>
+            <div class="modal-body">
+                <pre id="outputContent">Starting recommender...</pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="copyOutput()">Copy Output</button>
+                <button class="btn btn-primary" onclick="closeOutput()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Feature weights config
+        const featureWeights = {
+            energy: { value: 1.5, label: 'Energy' },
+            valence: { value: 1.5, label: 'Valence' },
+            danceability: { value: 1.2, label: 'Dance' },
+            acousticness: { value: 1.2, label: 'Acoustic' },
+            tempo: { value: 0.8, label: 'Tempo' },
+            loudness: { value: 0.8, label: 'Loudness' },
+            speechiness: { value: 0.6, label: 'Speech' },
+            instrumentalness: { value: 0.6, label: 'Instru' },
+            liveness: { value: 0.5, label: 'Liveness' }
+        };
+
+        // Knob values storage
+        const knobValues = {};
+
+        // Initialize mixer faders
+        function initMixer() {
+            const mixer = document.getElementById('mixer');
+            mixer.innerHTML = '';
+
+            for (const [id, config] of Object.entries(featureWeights)) {
+                const channel = document.createElement('div');
+                channel.className = 'fader-channel';
+                channel.innerHTML = `
+                    <div class="fader-label">${config.label}</div>
+                    <div class="fader-track" data-id="fw_${id}" data-min="0" data-max="2" data-value="${config.value}">
+                        <div class="fader-fill" style="height: ${(config.value / 2) * 100}%"></div>
+                        <div class="fader-handle" style="bottom: calc(${(config.value / 2) * 100}% - 6px)"></div>
+                    </div>
+                    <div class="fader-value">${config.value.toFixed(1)}</div>
+                `;
+                mixer.appendChild(channel);
+            }
+
+            // Initialize fader interactions
+            document.querySelectorAll('.fader-track').forEach(initFader);
+        }
+
+        // Initialize knobs
+        function initKnobs() {
+            document.querySelectorAll('.knob').forEach(knob => {
+                const id = knob.dataset.id;
+                const min = parseFloat(knob.dataset.min);
+                const max = parseFloat(knob.dataset.max);
+                const value = parseFloat(knob.dataset.value);
+                const decimals = parseInt(knob.dataset.decimals) || 0;
+
+                knobValues[id] = value;
+                updateKnobRotation(knob, value, min, max);
+                updateKnobDisplay(knob, value, decimals);
+
+                initKnobDrag(knob);
+            });
+        }
+
+        // Knob rotation
+        function updateKnobRotation(knob, value, min, max) {
+            const inner = knob.querySelector('.knob-inner');
+            const percent = (value - min) / (max - min);
+            const rotation = -135 + (percent * 270); // -135 to 135 degrees
+            inner.style.transform = `rotate(${rotation}deg)`;
+        }
+
+        // Knob display
+        function updateKnobDisplay(knob, value, decimals) {
+            const display = knob.parentElement.querySelector('.knob-value');
+            if (display) {
+                display.textContent = decimals > 0 ? value.toFixed(decimals) : Math.round(value);
+            }
+        }
+
+        // Knob drag
+        function initKnobDrag(knob) {
+            const min = parseFloat(knob.dataset.min);
+            const max = parseFloat(knob.dataset.max);
+            const step = parseFloat(knob.dataset.step) || 1;
+            const decimals = parseInt(knob.dataset.decimals) || 0;
+            const id = knob.dataset.id;
+
+            let startY, startValue;
+
+            const onMove = (e) => {
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const delta = (startY - clientY) * 0.5;
+                let newValue = startValue + (delta / 100) * (max - min);
+                newValue = Math.round(newValue / step) * step;
+                newValue = Math.max(min, Math.min(max, newValue));
+
+                knobValues[id] = newValue;
+                knob.dataset.value = newValue;
+                updateKnobRotation(knob, newValue, min, max);
+                updateKnobDisplay(knob, newValue, decimals);
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onUp);
+            };
+
+            const onDown = (e) => {
+                e.preventDefault();
+                startY = e.touches ? e.touches[0].clientY : e.clientY;
+                startValue = parseFloat(knob.dataset.value);
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                document.addEventListener('touchmove', onMove);
+                document.addEventListener('touchend', onUp);
+            };
+
+            knob.addEventListener('mousedown', onDown);
+            knob.addEventListener('touchstart', onDown);
+        }
+
+        // Fader initialization
+        function initFader(track) {
+            const min = parseFloat(track.dataset.min);
+            const max = parseFloat(track.dataset.max);
+            const id = track.dataset.id;
+
+            let dragging = false;
+
+            const updateFader = (clientY) => {
+                const rect = track.getBoundingClientRect();
+                let percent = 1 - ((clientY - rect.top) / rect.height);
+                percent = Math.max(0, Math.min(1, percent));
+
+                const value = min + percent * (max - min);
+                const rounded = Math.round(value * 10) / 10;
+
+                const featureId = id.replace('fw_', '');
+                if (featureWeights[featureId]) {
+                    featureWeights[featureId].value = rounded;
+                }
+
+                track.querySelector('.fader-fill').style.height = `${percent * 100}%`;
+                track.querySelector('.fader-handle').style.bottom = `calc(${percent * 100}% - 6px)`;
+                track.parentElement.querySelector('.fader-value').textContent = rounded.toFixed(1);
+            };
+
+            track.addEventListener('mousedown', (e) => {
+                dragging = true;
+                updateFader(e.clientY);
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (dragging) updateFader(e.clientY);
+            });
+
+            document.addEventListener('mouseup', () => {
+                dragging = false;
+            });
+        }
+
+        // Toggle switch
+        function toggleSwitch(el) {
+            el.classList.toggle('on');
+        }
+
+        // Select display update
+        function updateSelectDisplay(select) {
+            const display = document.getElementById(select.id + '_display');
+            if (display) {
+                display.textContent = select.options[select.selectedIndex].text;
+            }
+        }
+
+        // Get config values
+        function getConfig() {
+            const fw = {};
+            for (const [id, config] of Object.entries(featureWeights)) {
+                fw[id] = config.value;
+            }
+
+            return {
+                recommender: {
+                    total_tracks: knobValues.total_tracks,
+                    serendipity_slots: knobValues.serendipity_slots,
+                    saved_tracks_cap: knobValues.saved_tracks_cap,
+                    genre_candidates_limit: knobValues.genre_candidates_limit,
+                    related_candidates_limit: knobValues.related_candidates_limit,
+                    profile_tracks_limit: knobValues.profile_tracks_limit,
+                    n_clusters: knobValues.n_clusters,
+                    recency_decay: knobValues.recency_decay,
+                    range_penalty_strength: knobValues.range_penalty_strength,
+                    genre_match_mode: document.getElementById('genre_match_mode').value,
+                    use_local_history: document.querySelector('[data-id="use_local_history"]').classList.contains('on'),
+                    history_path: document.getElementById('history_path').value,
+                    use_api_related_artists: document.querySelector('[data-id="use_api_related_artists"]').classList.contains('on'),
+                    min_play_ms: knobValues.min_play_ms,
+                    popularity_min: knobValues.popularity_min,
+                    popularity_max: knobValues.popularity_max,
+                    similar_popularity_min: knobValues.similar_popularity_min,
+                    similar_popularity_max: knobValues.similar_popularity_max,
+                    serendipity_popularity_min: knobValues.serendipity_popularity_min,
+                    serendipity_popularity_max: knobValues.serendipity_popularity_max,
+                    top_artists_limit: knobValues.top_artists_limit,
+                    console_preview_count: knobValues.console_preview_count,
+                    feature_weights: fw
+                }
+            };
+        }
+
+        // Generate YAML
+        function generateYaml() {
+            const config = getConfig();
+            const r = config.recommender;
+
+            return `# Recommender settings
+recommender:
+  # Track counts
+  total_tracks: ${Math.round(r.total_tracks)}
+  serendipity_slots: ${Math.round(r.serendipity_slots)}
+  saved_tracks_cap: ${Math.round(r.saved_tracks_cap)}
+  
+  # Candidate limits
+  genre_candidates_limit: ${Math.round(r.genre_candidates_limit)}
+  related_candidates_limit: ${Math.round(r.related_candidates_limit)}
+  profile_tracks_limit: ${Math.round(r.profile_tracks_limit)}
+  
+  # Clustering
+  n_clusters: ${Math.round(r.n_clusters)}
+  recency_decay: ${r.recency_decay.toFixed(1)}
+  range_penalty_strength: ${r.range_penalty_strength.toFixed(2)}
+  genre_match_mode: ${r.genre_match_mode}
+  
+  # Local data settings
+  use_local_history: ${r.use_local_history}
+  history_path: ${r.history_path}
+  use_api_related_artists: ${r.use_api_related_artists}
+  
+  # Thresholds
+  min_play_ms: ${Math.round(r.min_play_ms)}
+  popularity_min: ${Math.round(r.popularity_min)}
+  popularity_max: ${Math.round(r.popularity_max)}
+  similar_popularity_min: ${Math.round(r.similar_popularity_min)}
+  similar_popularity_max: ${Math.round(r.similar_popularity_max)}
+  serendipity_popularity_min: ${Math.round(r.serendipity_popularity_min)}
+  serendipity_popularity_max: ${Math.round(r.serendipity_popularity_max)}
+  
+  # Collaborative filtering
+  top_artists_limit: ${Math.round(r.top_artists_limit)}
+  
+  # Display
+  console_preview_count: ${Math.round(r.console_preview_count)}
+  
+  # Feature weights
+  feature_weights:
+    energy: ${r.feature_weights.energy.toFixed(1)}
+    valence: ${r.feature_weights.valence.toFixed(1)}
+    danceability: ${r.feature_weights.danceability.toFixed(1)}
+    acousticness: ${r.feature_weights.acousticness.toFixed(1)}
+    tempo: ${r.feature_weights.tempo.toFixed(1)}
+    loudness: ${r.feature_weights.loudness.toFixed(1)}
+    speechiness: ${r.feature_weights.speechiness.toFixed(1)}
+    instrumentalness: ${r.feature_weights.instrumentalness.toFixed(1)}
+    liveness: ${r.feature_weights.liveness.toFixed(1)}
+`;
+        }
+
+        // Preview modal
+        function showPreview() {
+            document.getElementById('yamlPreview').textContent = generateYaml();
+            document.getElementById('previewModal').classList.add('show');
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.remove('show');
+        }
+
+        // Copy/Download
+        function copyToClipboard() {
+            navigator.clipboard.writeText(generateYaml()).then(() => showToast('Copied to clipboard'));
+        }
+
+        function downloadYaml() {
+            const blob = new Blob([generateYaml()], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'config.yml';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Downloaded config.yml');
+        }
+
+        function saveConfig() {
+            downloadYaml();
+        }
+
+        // Load config
+        function loadConfig() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.yml,.yaml';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const text = await file.text();
+                    parseAndApplyConfig(text);
+                }
+            };
+            input.click();
+        }
+
+        function parseAndApplyConfig(yamlText) {
+            try {
+                const lines = yamlText.split('\n');
+                let inFeatureWeights = false;
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('#') || !trimmed) continue;
+
+                    if (trimmed === 'feature_weights:') {
+                        inFeatureWeights = true;
+                        continue;
+                    }
+
+                    if (trimmed.includes(':')) {
+                        const [key, ...rest] = trimmed.split(':');
+                        let value = rest.join(':').split('#')[0].trim();
+                        const cleanKey = key.trim();
+
+                        if (inFeatureWeights && featureWeights[cleanKey]) {
+                            featureWeights[cleanKey].value = parseFloat(value);
+                        } else if (knobValues[cleanKey] !== undefined) {
+                            const numVal = parseFloat(value);
+                            knobValues[cleanKey] = numVal;
+                            const knob = document.querySelector(`[data-id="${cleanKey}"]`);
+                            if (knob && knob.classList.contains('knob')) {
+                                knob.dataset.value = numVal;
+                                const min = parseFloat(knob.dataset.min);
+                                const max = parseFloat(knob.dataset.max);
+                                const decimals = parseInt(knob.dataset.decimals) || 0;
+                                updateKnobRotation(knob, numVal, min, max);
+                                updateKnobDisplay(knob, numVal, decimals);
+                            }
+                        } else if (cleanKey === 'use_local_history' || cleanKey === 'use_api_related_artists') {
+                            const toggle = document.querySelector(`[data-id="${cleanKey}"]`);
+                            if (toggle) {
+                                if (value === 'true') toggle.classList.add('on');
+                                else toggle.classList.remove('on');
+                            }
+                        } else if (cleanKey === 'history_path') {
+                            document.getElementById('history_path').value = value;
+                        } else if (cleanKey === 'genre_match_mode') {
+                            const select = document.getElementById('genre_match_mode');
+                            select.value = value;
+                            updateSelectDisplay(select);
+                        }
+                    }
+                }
+
+                initMixer();
+                showToast('Config loaded');
+            } catch (err) {
+                console.error(err);
+                showToast('Error loading config');
+            }
+        }
+
+        // Toast
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastText').textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+
+        // Randomize all settings
+        function randomizeAll() {
+            // Knobs to skip during randomization
+            const skipKnobs = ['total_tracks'];
+
+            // Randomize all knobs (except skipped ones)
+            document.querySelectorAll('.knob').forEach(knob => {
+                const id = knob.dataset.id;
+                if (skipKnobs.includes(id)) return; // Skip this knob
+
+                const min = parseFloat(knob.dataset.min);
+                const max = parseFloat(knob.dataset.max);
+                const step = parseFloat(knob.dataset.step) || 1;
+                const decimals = parseInt(knob.dataset.decimals) || 0;
+
+                // Generate random value within range, snapped to step
+                let range = max - min;
+                let randomValue = min + Math.random() * range;
+                randomValue = Math.round(randomValue / step) * step;
+                randomValue = Math.max(min, Math.min(max, randomValue));
+
+                // Update knob
+                knobValues[id] = randomValue;
+                knob.dataset.value = randomValue;
+                updateKnobRotation(knob, randomValue, min, max);
+                updateKnobDisplay(knob, randomValue, decimals);
+            });
+
+            // Randomize toggles (except use_api_related_artists - keep on local/genre mode)
+            document.querySelectorAll('.toggle-switch').forEach(toggle => {
+                const id = toggle.dataset.id;
+                if (id === 'use_api_related_artists') return; // Skip - keep default
+
+                if (Math.random() > 0.5) {
+                    toggle.classList.add('on');
+                } else {
+                    toggle.classList.remove('on');
+                }
+            });
+
+            // Randomize genre mode
+            const modes = ['exact', 'prefix', 'fuzzy'];
+            const randomMode = modes[Math.floor(Math.random() * modes.length)];
+            const select = document.getElementById('genre_match_mode');
+            select.value = randomMode;
+            updateSelectDisplay(select);
+
+            // Randomize feature weights
+            for (const [id, config] of Object.entries(featureWeights)) {
+                const randomWeight = Math.round((Math.random() * 2) * 10) / 10; // 0.0 to 2.0
+                featureWeights[id].value = randomWeight;
+            }
+            initMixer();
+
+            // Visual feedback - brief flash on all modules
+            document.querySelectorAll('.module').forEach((module, i) => {
+                setTimeout(() => {
+                    module.style.boxShadow = '0 0 30px rgba(168, 85, 247, 0.5)';
+                    setTimeout(() => {
+                        module.style.boxShadow = '';
+                    }, 200);
+                }, i * 50);
+            });
+
+            showToast('Settings randomized!');
+        }
+
+        // Reset to default values
+        function resetToDefaults() {
+            // Default values matching config.yml
+            const defaults = {
+                total_tracks: 35,
+                serendipity_slots: 2,
+                saved_tracks_cap: 500,
+                genre_candidates_limit: 200,
+                related_candidates_limit: 80,
+                profile_tracks_limit: 150,
+                n_clusters: 3,
+                recency_decay: 2.0,
+                range_penalty_strength: 0.1,
+                min_play_ms: 30000,
+                popularity_min: 5,
+                popularity_max: 50,
+                similar_popularity_min: 5,
+                similar_popularity_max: 60,
+                serendipity_popularity_min: 10,
+                serendipity_popularity_max: 60,
+                top_artists_limit: 20,
+                console_preview_count: 10
+            };
+
+            // Reset all knobs
+            document.querySelectorAll('.knob').forEach(knob => {
+                const id = knob.dataset.id;
+                if (defaults[id] !== undefined) {
+                    const value = defaults[id];
+                    const min = parseFloat(knob.dataset.min);
+                    const max = parseFloat(knob.dataset.max);
+                    const decimals = parseInt(knob.dataset.decimals) || 0;
+
+                    knobValues[id] = value;
+                    knob.dataset.value = value;
+                    updateKnobRotation(knob, value, min, max);
+                    updateKnobDisplay(knob, value, decimals);
+                }
+            });
+
+            // Reset toggles
+            document.querySelector('[data-id="use_local_history"]').classList.add('on');
+            document.querySelector('[data-id="use_api_related_artists"]').classList.remove('on');
+
+            // Reset genre mode
+            const select = document.getElementById('genre_match_mode');
+            select.value = 'prefix';
+            updateSelectDisplay(select);
+
+            // Reset history path
+            document.getElementById('history_path').value = 'my_spotify_data/Spotify Extended Streaming History';
+
+            // Reset feature weights to defaults
+            const defaultWeights = {
+                energy: 1.5, valence: 1.5, danceability: 1.2, acousticness: 1.2,
+                tempo: 0.8, loudness: 0.8, speechiness: 0.6, instrumentalness: 0.6, liveness: 0.5
+            };
+            for (const [id, value] of Object.entries(defaultWeights)) {
+                featureWeights[id].value = value;
+            }
+            initMixer();
+
+            // Visual feedback - cyan flash
+            document.querySelectorAll('.module').forEach((module, i) => {
+                setTimeout(() => {
+                    module.style.boxShadow = '0 0 30px rgba(6, 182, 212, 0.4)';
+                    setTimeout(() => {
+                        module.style.boxShadow = '';
+                    }, 200);
+                }, i * 50);
+            });
+
+            showToast('Reset to defaults');
+        }
+
+        // Close modal on overlay click
+        document.getElementById('previewModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) closePreview();
+        });
+
+        // Run recommender with current settings (streaming output)
+        async function runRecommender() {
+            const runBtn = document.getElementById('runBtn');
+            const outputModal = document.getElementById('outputModal');
+            const outputStatus = document.getElementById('outputStatus');
+            const outputContent = document.getElementById('outputContent');
+
+            // Update UI to running state
+            runBtn.disabled = true;
+            runBtn.classList.add('running');
+            runBtn.innerHTML = '<span class="play-icon">▶</span> Running...';
+
+            // Show output modal
+            outputStatus.textContent = '⏳ Running...';
+            outputStatus.className = 'status-running';
+            outputContent.textContent = '';
+            outputModal.classList.add('show');
+
+            try {
+                const yaml = generateYaml();
+                const saveToSpotify = document.getElementById('save_to_spotify').checked;
+                const saveToTidal = document.getElementById('save_to_tidal').checked;
+
+                // Send config with options
+                const payload = JSON.stringify({
+                    config: yaml,
+                    save_spotify: saveToSpotify,
+                    save_tidal: saveToTidal
+                });
+
+                const response = await fetch('/api/run-stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: payload
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // Process complete SSE messages
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // Keep incomplete message in buffer
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const event = JSON.parse(line.slice(6));
+
+                                if (event.type === 'output') {
+                                    outputContent.textContent += event.data + '\n';
+                                    // Auto-scroll to bottom
+                                    outputContent.scrollTop = outputContent.scrollHeight;
+                                } else if (event.type === 'complete') {
+                                    if (event.success) {
+                                        outputStatus.textContent = '✓ Completed Successfully';
+                                        outputStatus.className = 'status-success';
+                                    } else {
+                                        outputStatus.textContent = '✗ Error (exit code ' + event.returncode + ')';
+                                        outputStatus.className = 'status-error';
+                                    }
+                                } else if (event.type === 'error') {
+                                    outputStatus.textContent = '✗ Error';
+                                    outputStatus.className = 'status-error';
+                                    outputContent.textContent += '\nError: ' + event.message;
+                                }
+                            } catch (e) {
+                                // Ignore parse errors
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                outputStatus.textContent = '✗ Connection Error';
+                outputStatus.className = 'status-error';
+                outputContent.textContent = `Failed to connect to server.\n\nMake sure you're running the server:\n  python server.py\n\nThen access via: http://localhost:8080/config-editor.html\n\nError: ${error.message}`;
+            } finally {
+                runBtn.disabled = false;
+                runBtn.classList.remove('running');
+                runBtn.innerHTML = '<span class="play-icon">▶</span> Run';
+            }
+        }
+
+        // Close output modal
+        function closeOutput() {
+            document.getElementById('outputModal').classList.remove('show');
+        }
+
+        // Copy output to clipboard
+        function copyOutput() {
+            const output = document.getElementById('outputContent').textContent;
+            navigator.clipboard.writeText(output).then(() => showToast('Output copied'));
+        }
+
+        // Close output modal on overlay click
+        document.getElementById('outputModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) closeOutput();
+        });
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            initKnobs();
+            initMixer();
+        });
+    </script>
+</body>
+
+</html>

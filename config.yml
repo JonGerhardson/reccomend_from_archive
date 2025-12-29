@@ -1,0 +1,58 @@
+spotify:
+  client_id: YOUR_SPOTIFY_CLIENT_ID
+  client_secret: YOUR_SPOTIFY_CLIENT_SECRET
+  username: YOUR_SPOTIFY_USERNAME
+  redirect_uri: http://127.0.0.1:8888/callback
+  open_browser: True  # Set to False if using a headless server environment
+
+
+# Recommender settings
+recommender:
+  # Track counts
+  total_tracks: 35           # Total recommendations to generate
+  serendipity_slots: 2       # Wild card slots (outside your genres)
+  saved_tracks_cap: 500      # Max saved tracks to check for exclusion
+  
+  # Candidate limits
+  genre_candidates_limit: 200      # Max genre-based candidates
+  related_candidates_limit: 80     # Max collaborative filtering candidates
+  profile_tracks_limit: 150        # Top tracks used for building your profile
+  
+  # Clustering
+  n_clusters: 3              # Number of listening "moods" to detect
+  recency_decay: 2.0         # How much to favor recent listening (1.0 = equal)
+  range_penalty_strength: 0.1  # Outlier penalty (0.0 off, 0.2 strict)
+  genre_match_mode: prefix   # 'exact', 'prefix', or 'fuzzy'
+  
+  # Local data settings
+  use_local_history: true    # Use local streaming history instead of API
+  history_path: my_spotify_data/Spotify Extended Streaming History
+  use_api_related_artists: false  # false = genre-based similar artists (default)
+  
+  # Thresholds
+  min_play_ms: 30000              # Skip plays under 30 seconds
+  popularity_min: 5               # Genre candidate floor
+  popularity_max: 50              # Genre candidate ceiling
+  similar_popularity_min: 5       # Similar artist candidate floor
+  similar_popularity_max: 60      # Similar artist candidate ceiling
+  serendipity_popularity_min: 10  # Wild card floor
+  serendipity_popularity_max: 60  # Wild card ceiling
+  
+  # Collaborative filtering
+  top_artists_limit: 20           # Top artists to analyze for similar artists
+  
+  # Display
+  console_preview_count: 10       # Tracks to show in console (rest hidden)
+  
+  # Feature weights - tune which audio features matter most for matching
+  # Higher = more important (1.5 = high, 1.0 = normal, 0.5 = low)
+  feature_weights:
+    energy: 1.5
+    valence: 1.5
+    danceability: 1.2
+    acousticness: 1.2
+    tempo: 0.8
+    loudness: 0.8
+    speechiness: 0.6
+    instrumentalness: 0.6
+    liveness: 0.5
