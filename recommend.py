@@ -7,11 +7,12 @@ import os
 import subprocess
 import random
 import logging
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
+from sklearn.metrics.pairwise import cosine_similarity
 from typing import Any
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
 import warnings
 import argparse
@@ -26,6 +27,54 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- CAMELOT WHEEL CONSTANTS ---
+# Mapping (key, mode) -> Camelot Code
+# key: 0=C, 1=C#, 2=D, ... 11=B
+# mode: 1=Major, 0=Minor
+CAMELOT_WHEEL = {
+    (0, 1): '8B', (1, 1): '3B', (2, 1): '10B', (3, 1): '5B', (4, 1): '12B',
+    (5, 1): '7B', (6, 1): '2B', (7, 1): '9B', (8, 1): '4B', (9, 1): '11B', 
+    (10, 1): '6B', (11, 1): '1B',
+    (0, 0): '5A', (1, 0): '12A', (2, 0): '7A', (3, 0): '2A', (4, 0): '9A',
+    (5, 0): '4A', (6, 0): '11A', (7, 0): '6A', (8, 0): '1A', (9, 0): '8A', 
+    (10, 0): '3A', (11, 0): '10A'
+}
+
+def get_camelot_code(key: int, mode: int) -> str:
+    """Convert Spotify key/mode to Camelot Code."""
+    return CAMELOT_WHEEL.get((int(key), int(mode)), '??')
+
+def get_compatible_camelot_keys(target_code: str) -> set[str]:
+    """Get list of harmonically compatible Camelot keys."""
+    if not target_code or target_code == '??':
+        return set()
+        
+    # extract number and letter
+    if target_code[-1] not in ('A', 'B'): 
+        return {target_code}
+    
+    number = int(target_code[:-1])
+    letter = target_code[-1]
+    
+    compatible = {target_code}
+    
+    # 1. Same Number, different letter (Relative Major/Minor)
+    # 8A <-> 8B
+    other_letter = 'B' if letter == 'A' else 'A'
+    compatible.add(f"{number}{other_letter}")
+    
+    # 2. +/- 1 Hour (Perfect 5th / 4th) - same letter
+    # 8A -> 7A, 9A
+    prev_num = number - 1 if number > 1 else 12
+    next_num = number + 1 if number < 12 else 1
+    compatible.add(f"{prev_num}{letter}")
+    compatible.add(f"{next_num}{letter}")
+    
+    # Optional: Diagonal mixes (energy boost/drop) e.g. 8A -> 9B
+    # keeping it simple for now
+    
+    return compatible
+
 # Parse command line arguments (only when run as script, not when imported)
 def _parse_args() -> argparse.Namespace:
     """Parse command line arguments. Safe to call when imported."""
@@ -33,6 +82,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument('--fast', action='store_true', help='Fast mode with mock data for testing')
     parser.add_argument('--skip-spotify', action='store_true', help='Skip saving playlist to Spotify')
     parser.add_argument('--skip-tidal', action='store_true', help='Skip syncing playlist to Tidal')
+    parser.add_argument('--no-cache', action='store_true', help='Force regeneration of user profile (ignore cache)')
     # Use parse_known_args to ignore unknown args (allows pytest to work)
     args, _ = parser.parse_known_args()
     return args
@@ -70,8 +120,12 @@ def _load_config() -> tuple[str, str, str, dict[str, Any]]:
     return client_id, client_secret, redirect_uri, recommender_cfg
 
 SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, SPOTIPY_REDIRECT_URI, _RECOMMENDER_CFG = _load_config()
-DB_PATH = 'spotify_clean.sqlite3'
-AUDIO_FEATURES_DB_PATH = 'spotify_clean_audio_features.sqlite3'
+
+# Fix DB paths to be absolute (robust against CWD changes)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(_SCRIPT_DIR, 'spotify_clean.sqlite3')
+AUDIO_FEATURES_DB_PATH = os.path.join(_SCRIPT_DIR, 'spotify_clean_audio_features.sqlite3')
+
 
 
 class DatabaseConnection:
@@ -127,7 +181,8 @@ FEATURE_COLS = [
 # Type aliases for cleaner signatures
 TrackCandidate = dict[str, Any]  # {'id', 'name', 'artist', 'popularity'}
 ClusterStats = dict[str, np.ndarray]  # {'mean', 'std', 'min', 'max'}
-ProfileResult = tuple[np.ndarray, np.ndarray, list[ClusterStats], list[str], list[str], MinMaxScaler, np.ndarray]
+# Added dict[str, float] for skip_map at the end
+ProfileResult = tuple[np.ndarray, np.ndarray, list[ClusterStats], list[str], list[str], MinMaxScaler, np.ndarray, dict[str, float]]
 
 # Default feature weights - can be overridden in config.yml
 DEFAULT_FEATURE_WEIGHTS = {
@@ -162,7 +217,7 @@ class RecommenderConfig:
     
     # Local history settings
     use_local_history: bool = False
-    history_path: str = 'my_spotify_data(2)/Spotify Extended Streaming History'
+    history_path: str = 'my_spotify_data/Spotify Extended Streaming History'
     use_api_related_artists: bool = False
     
     # Thresholds (magic numbers)
@@ -183,6 +238,40 @@ class RecommenderConfig:
     # Feature weights (dict loaded separately)
     feature_weights: dict[str, float] = field(default_factory=lambda: DEFAULT_FEATURE_WEIGHTS.copy())
     
+    # Filters
+    date_start: str | None = None
+    date_end: str | None = None
+    blocked_genres: list[str] = field(default_factory=list)
+    
+    # Advanced Tweaks
+    skip_penalty: float = 0.5    # Reduce weight for skipped tracks
+    repeat_boost: float = 1.2    # Boost for tracks played > 5 times
+    max_speechiness: float | None = None
+    acoustic_option: str | None = None  # 'acoustic', 'electric', or None
+    liveness_option: str | None = None  # 'live', 'studio', or None
+    
+    # Rediscovery
+    rediscovery_mode: bool = False
+    rediscovery_days: int = 365  # Default: hasn't been played in a year
+    
+    # Era / Decade
+    release_year_min: int | None = None
+    release_year_max: int | None = None
+
+    # New Filters
+    min_tempo: int | None = None
+    max_tempo: int | None = None
+    vocal_mode: str | None = None  # 'instrumental_only', 'vocal_only', or None
+    mode_filter: str | None = None # 'major', 'minor', or None
+
+    # DJ Tools
+    smart_bpm: bool = True     # Allow tracking doubling/halving (e.g. 80bpm matches 160bpm)
+    dj_mode: bool = False      # Prioritize harmonic mixing
+    target_camelot: str | None = None # Force specific Camelot key (e.g. '8A')
+    
+    # Skips
+    penalize_skips: bool = True # Toggle for candidate skip penalty
+
     @classmethod
     def from_dict(cls, cfg: dict[str, Any]) -> 'RecommenderConfig':
         """Create config from dictionary, using defaults for missing keys."""
@@ -198,7 +287,7 @@ class RecommenderConfig:
             related_candidates_limit=cfg.get('related_candidates_limit', 80),
             profile_tracks_limit=cfg.get('profile_tracks_limit', 150),
             use_local_history=cfg.get('use_local_history', False),
-            history_path=cfg.get('history_path', 'my_spotify_data(2)/Spotify Extended Streaming History'),
+            history_path=cfg.get('history_path', 'my_spotify_data/Spotify Extended Streaming History'),
             use_api_related_artists=cfg.get('use_api_related_artists', False),
             min_play_ms=cfg.get('min_play_ms', 30000),
             popularity_min=cfg.get('popularity_min', 5),
@@ -210,6 +299,26 @@ class RecommenderConfig:
             top_artists_limit=cfg.get('top_artists_limit', 20),
             console_preview_count=cfg.get('console_preview_count', 10),
             feature_weights={**DEFAULT_FEATURE_WEIGHTS, **cfg.get('feature_weights', {})},
+            date_start=cfg.get('date_start'),
+            date_end=cfg.get('date_end'),
+            blocked_genres=cfg.get('blocked_genres', []),
+            skip_penalty=cfg.get('skip_penalty', 0.5),
+            repeat_boost=cfg.get('repeat_boost', 1.2),
+            max_speechiness=cfg.get('max_speechiness'),
+            acoustic_option=cfg.get('acoustic_option'),
+            liveness_option=cfg.get('liveness_option'),
+            rediscovery_mode=cfg.get('rediscovery_mode', False),
+            rediscovery_days=cfg.get('rediscovery_days', 365),
+            release_year_min=cfg.get('release_year_min'),
+            release_year_max=cfg.get('release_year_max'),
+            min_tempo=cfg.get('min_tempo'),
+            max_tempo=cfg.get('max_tempo'),
+            vocal_mode=cfg.get('vocal_mode'),
+            mode_filter=cfg.get('mode_filter'),
+            smart_bpm=cfg.get('smart_bpm', True),
+            dj_mode=cfg.get('dj_mode', False),
+            target_camelot=cfg.get('target_camelot'),
+            penalize_skips=cfg.get('penalize_skips', True),
         )
 
 # Initialize config from loaded YAML
@@ -272,6 +381,8 @@ def generate_mock_data() -> tuple[pd.DataFrame, list[TrackCandidate], pd.DataFra
         'liveness': np.random.uniform(0.1, 0.3, 30),
         'valence': np.concatenate([np.random.uniform(0.6, 0.9, 10), np.random.uniform(0.2, 0.4, 10), np.random.uniform(0.4, 0.6, 10)]),
         'tempo': np.random.uniform(100, 140, 30),
+        'mode': np.random.randint(0, 2, 30),  # 0 or 1
+        'key': np.random.randint(0, 12, 30),  # 0-11
     })
     
     # Mock recency weights: short (0-9), medium (10-19), long (20-29)
@@ -298,6 +409,8 @@ def generate_mock_data() -> tuple[pd.DataFrame, list[TrackCandidate], pd.DataFra
         'liveness': np.random.uniform(0.1, 0.4, 20),
         'valence': np.random.uniform(0.2, 0.9, 20),
         'tempo': np.random.uniform(80, 160, 20),
+        'mode': np.random.randint(0, 2, 20),
+        'key': np.random.randint(0, 12, 20),
     })
     
     return mock_features, mock_candidates, mock_candidate_features, mock_sample_weights
@@ -342,6 +455,9 @@ def load_streaming_history() -> pd.DataFrame:
                     'country': r.get('conn_country', 'unknown'),
                     'shuffle': r.get('shuffle', False),
                     'offline': r.get('offline', False),
+                    # Improved skip detection: 'skipped' is boolean, 'reason_end' gives context
+                    'skipped': r.get('skipped', False) or r.get('reason_end') in ['fwdbtn', 'backbtn'], 
+                    'reason_end': r.get('reason_end'),
                 })
     
     df = pd.DataFrame(all_records)
@@ -406,7 +522,8 @@ def get_audio_features_from_db(track_ids: list[str]) -> pd.DataFrame:
     placeholders = ','.join(['?' for _ in track_ids])
     query = f"""
         SELECT track_id, danceability, energy, loudness, speechiness,
-               acousticness, instrumentalness, liveness, valence, tempo
+               acousticness, instrumentalness, liveness, valence, tempo,
+               mode, key
         FROM track_audio_features
         WHERE track_id IN ({placeholders})
         AND null_response = 0
@@ -414,15 +531,188 @@ def get_audio_features_from_db(track_ids: list[str]) -> pd.DataFrame:
     df = pd.read_sql_query(query, con, params=track_ids)
     return df
 
+def save_audio_features(features_list: list[dict[str, Any]]) -> None:
+    """Save fetched audio features to local database."""
+    if not features_list:
+        return
+        
+    logger.info(f"  -> Saving {len(features_list)} new audio features to database...")
+    
+    with DatabaseConnection(AUDIO_FEATURES_DB_PATH) as con:
+        cursor = con.cursor()
+        
+        # Prepare data for insertion
+        data_to_insert = []
+        for f in features_list:
+            if not f: continue
+            data_to_insert.append((
+                f['id'], f['danceability'], f['energy'], f['key'],
+                f['loudness'], f['mode'], f['speechiness'], f['acousticness'],
+                f['instrumentalness'], f['liveness'], f['valence'], f['tempo'],
+                f['duration_ms'], f['time_signature'], 0 # null_response = 0
+            ))
+            
+        try:
+            cursor.executemany("""
+                INSERT OR IGNORE INTO track_audio_features 
+                (track_id, danceability, energy, key, loudness, mode, speechiness, 
+                 acousticness, instrumentalness, liveness, valence, tempo, 
+                 duration_ms, time_signature, null_response)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, data_to_insert)
+            con.commit()
+        except Exception as e:
+            logger.error(f"Error saving audio features: {e}")
+
+
+def train_mood_clusters(df: pd.DataFrame, sample_weights: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, list[ClusterStats], MinMaxScaler, np.ndarray]:
+    """
+    Core profiling logic: clusters audio features to find 'moods'.
+    Reusable for both User History and Playlist Seeding.
+    """
+    if df.empty:
+        raise ValueError("Cannot train clusters on empty dataframe")
+        
+    # Scale features
+    scaler = MinMaxScaler()
+    feature_matrix = df[FEATURE_COLS].values.astype(float)
+    normalized_features = scaler.fit_transform(feature_matrix)
+    
+    # Apply global feature weights
+    weights = np.array([config.feature_weights.get(col, 1.0) for col in FEATURE_COLS])
+    weighted_features = normalized_features * weights
+    
+    # Default weights if None
+    if sample_weights is None:
+        sample_weights = np.ones(len(df))
+        
+    # KMeans Clustering
+    n_clusters = min(config.n_clusters, len(df))
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    kmeans.fit(weighted_features, sample_weight=sample_weights)
+    
+    cluster_centers = kmeans.cluster_centers_
+    
+    # Calculate cluster weights (how much of the history/playlist falls into this mood)
+    labels = kmeans.labels_
+    label_weights = pd.DataFrame({'label': labels, 'weight': sample_weights})
+    total_weight = label_weights['weight'].sum()
+    cluster_weights = label_weights.groupby('label')['weight'].sum() / total_weight
+    cluster_weights = cluster_weights.reindex(range(n_clusters), fill_value=0).values
+    
+    # Calculate stats per cluster for range fitting
+    df_normalized = pd.DataFrame(normalized_features, columns=FEATURE_COLS)
+    df_normalized['cluster'] = labels
+    
+    cluster_stats = []
+    for i in range(n_clusters):
+        cluster_data = df_normalized[df_normalized['cluster'] == i]
+        stats = {
+            'mean': np.zeros(len(FEATURE_COLS)),
+            'std': np.zeros(len(FEATURE_COLS)),
+            'min': np.zeros(len(FEATURE_COLS)),
+            'max': np.zeros(len(FEATURE_COLS)),
+        }
+        if not cluster_data.empty:
+            stats['mean'] = (cluster_data[FEATURE_COLS].mean().values * weights)
+            stats['std'] = (cluster_data[FEATURE_COLS].std().values * weights)
+            stats['min'] = (cluster_data[FEATURE_COLS].min().values * weights)
+            stats['max'] = (cluster_data[FEATURE_COLS].max().values * weights)
+        else:
+            # Fallback for empty cluster (shouldn't happen with min(n_clusters, len(df)))
+            stats['mean'] = np.array([0.5] * len(FEATURE_COLS)) * weights
+            stats['std'] = np.array([0.1] * len(FEATURE_COLS)) * weights
+            stats['min'] = np.array([0.0] * len(FEATURE_COLS)) * weights
+            stats['max'] = np.array([1.0] * len(FEATURE_COLS)) * weights
+        cluster_stats.append(stats)
+        
+    # Describe clusters
+    logger.info(f"  -> Detected {n_clusters} distinct listening moods:")
+    for i in range(n_clusters):
+        cluster_data = df_normalized[df_normalized['cluster'] == i][FEATURE_COLS]
+        if not cluster_data.empty:
+            energy_level = cluster_data['energy'].mean()
+            valence_level = cluster_data['valence'].mean()
+            mood = "upbeat" if valence_level > 0.5 else "moody"
+            intensity = "high-energy" if energy_level > 0.5 else "chill"
+            energy_range = f"{cluster_data['energy'].min():.0%}-{cluster_data['energy'].max():.0%}"
+            logger.info(f"     Mood {i+1}: {intensity} + {mood} ({len(cluster_data)} tracks)")
+        else:
+            logger.info(f"     Mood {i+1}: (empty cluster)")
+            
+    return cluster_centers, cluster_weights, cluster_stats, scaler, weights
+
+# Profile cache settings
+_PROFILE_CACHE_DIR = os.path.expanduser('~/.cache/spot')
+_PROFILE_CACHE_FILE = os.path.join(_PROFILE_CACHE_DIR, 'user_profile.pkl')
+_PROFILE_CACHE_MAX_AGE_HOURS = 24
+
+def _load_cached_profile() -> ProfileResult | None:
+    """Load cached profile if it exists and is fresh."""
+    import pickle
+    
+    if getattr(ARGS, 'no_cache', False):
+        logger.info("  -> Profile cache disabled via --no-cache")
+        return None
+        
+    if not os.path.exists(_PROFILE_CACHE_FILE):
+        return None
+        
+    # Check age
+    mtime = os.path.getmtime(_PROFILE_CACHE_FILE)
+    age_hours = (datetime.now().timestamp() - mtime) / 3600
+    
+    if age_hours > _PROFILE_CACHE_MAX_AGE_HOURS:
+        logger.info(f"  -> Profile cache expired ({age_hours:.1f}h old)")
+        return None
+        
+    try:
+        with open(_PROFILE_CACHE_FILE, 'rb') as f:
+            cached = pickle.load(f)
+        logger.info(f"  -> Loaded profile from cache ({age_hours:.1f}h old)")
+        return cached
+    except Exception as e:
+        logger.warning(f"  -> Cache load failed: {e}")
+        return None
+
+def _save_profile_cache(profile: ProfileResult) -> None:
+    """Save profile to cache."""
+    import pickle
+    
+    try:
+        os.makedirs(_PROFILE_CACHE_DIR, exist_ok=True)
+        with open(_PROFILE_CACHE_FILE, 'wb') as f:
+            pickle.dump(profile, f)
+        logger.info(f"  -> Saved profile to cache")
+    except Exception as e:
+        logger.warning(f"  -> Cache save failed: {e}")
+
 def get_user_profile_local() -> ProfileResult:
     """Build user profile from local streaming history instead of API.
     
     Uses actual timestamps for recency weighting (more granular than API's
-    short/medium/long term buckets).
+    short/medium/long term buckets). Caches result for 24h to speed up subsequent runs.
     """
+    # Try cache first
+    cached = _load_cached_profile()
+    if cached is not None:
+        return cached
+        
     logger.info("Analyze: Building profile from local streaming history...")
     
     history_df = load_streaming_history()
+    
+    # Date Filtering (Timeframe Control)
+    if config.date_start:
+        logger.info(f"  -> Filtering history: starting from {config.date_start}")
+        history_df = history_df[history_df['ts'] >= pd.to_datetime(config.date_start).tz_localize(history_df['ts'].dt.tz)]
+    
+    if config.date_end:
+        logger.info(f"  -> Filtering history: up to {config.date_end}")
+        history_df = history_df[history_df['ts'] <= pd.to_datetime(config.date_end).tz_localize(history_df['ts'].dt.tz)]
+        
+    if history_df.empty:
+        raise ValueError(f"No listening history found in the selected timeframe ({config.date_start} to {config.date_end})")
     
     # Calculate recency weight based on actual timestamp
     # More recent = higher weight, with exponential decay
@@ -438,8 +728,21 @@ def get_user_profile_local() -> ProfileResult:
         'recency_weight': 'sum',
         'ms_played': 'sum',
         'artist_name': 'first',
-        'track_name': 'first'
+        'track_name': 'first',
+        'skipped': 'mean'
     }).rename(columns={'recency_weight': 'weight'})
+    
+    # Apply Smart Weights
+    # 1. Skip Penalty
+    if config.skip_penalty > 0:
+        track_scores['weight'] *= (1.0 - (track_scores['skipped'] * config.skip_penalty))
+        
+    # 2. Repeat Boost
+    play_counts = history_df.groupby('track_id').size()
+    track_scores['play_count'] = play_counts
+    if config.repeat_boost > 1.0:
+        boost_mask = track_scores['play_count'] >= 5
+        track_scores.loc[boost_mask, 'weight'] *= config.repeat_boost
     
     # Get top tracks by weighted play time
     track_scores['weighted_play'] = track_scores['weight'] * track_scores['ms_played']
@@ -475,48 +778,9 @@ def get_user_profile_local() -> ProfileResult:
         for tid in df['track_id']
     ])
     
-    # Normalize features
-    scaler = MinMaxScaler()
-    df[FEATURE_COLS] = scaler.fit_transform(df[FEATURE_COLS])
-    
-    # Apply feature weights
-    weights = np.array([FEATURE_WEIGHTS[f] for f in FEATURE_COLS])
-    weighted_features = df[FEATURE_COLS].values * weights
-    
-    # Cluster into distinct listening moods
-    n_clusters = min(N_CLUSTERS, len(df))
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    df['cluster'] = kmeans.fit_predict(weighted_features, sample_weight=sample_weights)
-    
-    cluster_centers = kmeans.cluster_centers_
-    cluster_weight_sums = []
-    for i in range(n_clusters):
-        mask = df['cluster'] == i
-        cluster_weight_sums.append(sample_weights[mask].sum())
-    cluster_weights = np.array(cluster_weight_sums) / sum(cluster_weight_sums)
-    
-    # Compute per-cluster stats
-    cluster_stats = []
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i][FEATURE_COLS]
-        stats = {
-            'mean': cluster_data.mean().values * weights,
-            'std': cluster_data.std().values * weights,
-            'min': cluster_data.min().values * weights,
-            'max': cluster_data.max().values * weights,
-        }
-        cluster_stats.append(stats)
-    
-    # Describe clusters
-    logger.info(f"  -> Detected {n_clusters} distinct listening moods:")
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i][FEATURE_COLS]
-        energy_level = cluster_data['energy'].mean()
-        valence_level = cluster_data['valence'].mean()
-        mood = "upbeat" if valence_level > 0.5 else "moody"
-        intensity = "high-energy" if energy_level > 0.5 else "chill"
-        energy_range = f"{cluster_data['energy'].min():.0%}-{cluster_data['energy'].max():.0%}"
-        logger.info(f"     Mood {i+1}: {intensity} + {mood} ({len(cluster_data)} tracks)")
+    # --- CLUSTERING ---
+    # Extract clustering logic into reusable function
+    cluster_centers, cluster_weights, cluster_stats, scaler, weights = train_mood_clusters(df, sample_weights)
     
     # Get top artists from history and look up genres from local DB
     top_artists = history_df.groupby('artist_name').agg({
@@ -537,14 +801,204 @@ def get_user_profile_local() -> ProfileResult:
             result = con.execute(query, [artist_name]).fetchall()
             genres.extend([r[0] for r in result])
     
-    top_genres = pd.Series(genres).value_counts().head(5).index.tolist() if genres else []
-    logger.info(f"  -> Top genres: {top_genres}")
+    top_genres = pd.Series(genres).value_counts().head(20).index.tolist() if genres else []
+    
+    # Filter Blocked Genres
+    if config.blocked_genres:
+        logger.info(f"  -> Applying genre blocklist: {config.blocked_genres}")
+        filtered_genres = []
+        for g in top_genres:
+            is_blocked = any(blocked.lower() in g.lower() for blocked in config.blocked_genres)
+            if not is_blocked:
+                filtered_genres.append(g)
+        top_genres = filtered_genres[:5]
+        top_genres = top_genres[:5]
+        
+    logger.info(f"  -> Top genres (after filters): {top_genres}")
     
     # For genre-based similar artists, we don't need API artist IDs
     # Return artist NAMES instead of IDs for local lookup
     top_artist_names = artist_names[:config.top_artists_limit]
     
-    return cluster_centers, cluster_weights, cluster_stats, top_genres, top_artist_names, scaler, weights
+    # Calculate global skip rates for all tracks in history
+    # (Not just top tracks)
+    track_skip_stats = history_df.groupby('track_id').agg({
+        'skipped': 'mean',
+        'ms_played': 'count'
+    })
+    # Filter to tracks with at least 2 plays to avoid noise
+    significant_skips = track_skip_stats[track_skip_stats['ms_played'] >= 2]
+    # Map track_id -> skip_rate
+    skip_map = significant_skips['skipped'].to_dict()
+    
+    result = (cluster_centers, cluster_weights, cluster_stats, top_genres, top_artist_names, scaler, weights, skip_map)
+    _save_profile_cache(result)
+    return result
+
+def get_playlist_profile(playlist_id: str) -> ProfileResult:
+    """Generates a profile from a specific Spotify playlist."""
+    logger.info(f"Analyze: Building profile from Spotify playlist: {playlist_id}...")
+    
+    sp = get_spotify_client()
+    
+    # 1. Fetch Playlist Tracks
+    results = sp.playlist_tracks(playlist_id)
+    tracks = results['items']
+    while results['next']:
+        results = sp.next(results)
+        tracks.extend(results['items'])
+        
+    logger.info(f"  -> Found {len(tracks)} tracks in playlist")
+    
+    # 2. Extract IDs and Metadata
+    track_ids = []
+    artist_names = []
+    for t in tracks:
+        if t['track'] and t['track']['id']:
+            track_ids.append(t['track']['id'])
+            if t['track']['artists']:
+                artist_names.append(t['track']['artists'][0]['name'])
+            else:
+                artist_names.append("Unknown Artist")
+            
+    # 3. Get Audio Features (local db or api)
+    df_features = get_audio_features_from_db(track_ids)
+    
+    missing_ids = [tid for tid in track_ids if tid not in df_features['track_id'].values]
+    if missing_ids:
+        logger.info(f"  -> Fetching audio features for {len(missing_ids)} missing tracks from API...")
+        # Chunking for API calls
+        for i in range(0, len(missing_ids), 100):
+            batch = missing_ids[i:i+100]
+            try:
+                features_list = sp.audio_features(batch)
+                features_list = [f for f in features_list if f] # Filter Nones
+                if features_list:
+                    save_audio_features(features_list) # Assuming save_audio_features is available
+            except Exception as e:
+                logger.error(f"Error fetching features for batch: {e}")
+        
+        # Reload full dataframe after fetching
+        df_features = get_audio_features_from_db(track_ids)
+
+    if df_features.empty:
+        raise ValueError("No audio features found for this playlist.")
+    
+    logger.info(f"  -> Found audio features for {len(df_features)}/{len(track_ids)} tracks")
+
+    # 4. Train Clusters
+    # Playlist tracks are usually equally weighted representing the vibe
+    cluster_centers, cluster_weights, cluster_stats, scaler, weights = train_mood_clusters(df_features, sample_weights=None)
+    
+    # 5. Top Artists / Genres (Approximation)
+    # For playlist profiling, we don't have user's top genres directly.
+    # We can try to infer from the playlist artists, but for simplicity,
+    # we'll return an empty list for genres, which means genre-based candidates
+    # will be skipped or rely on other sources.
+    top_genres = [] 
+    
+    top_artist_names = pd.Series(artist_names).value_counts().head(config.top_artists_limit).index.tolist()
+    
+    # Playlist profiling doesn't have a skip map
+    skip_map = {}
+    
+    return cluster_centers, cluster_weights, cluster_stats, top_genres, top_artist_names, scaler, weights, skip_map
+
+def print_coverage_report():
+    """Diagnostic tool: Checks percentage of history tracks that have cached audio features."""
+    logger.info("Generating Database Coverage Report...")
+    
+    try:
+        history_df = load_streaming_history()
+    except FileNotFoundError as e:
+        logger.error(f"Error loading history for coverage report: {e}")
+        return
+
+    all_track_ids = history_df['track_id'].unique().tolist()
+    total_tracks = len(all_track_ids)
+    
+    if total_tracks == 0:
+        logger.info("No listening history found to generate report.")
+        return
+
+    # Check DB
+    con = DatabaseConnection.get_shared(AUDIO_FEATURES_DB_PATH)
+    
+    # Avoid SQLite variable limit by fetching all cached IDs and comparing sets in Python
+    # This is efficient enough for <100k tracks
+    cursor = con.execute("SELECT track_id FROM track_audio_features")
+    cached_ids = set(row[0] for row in cursor.fetchall())
+    
+    # Calculate intersection
+    in_history_and_cache = len(set(all_track_ids).intersection(cached_ids))
+    
+    percent = (in_history_and_cache / total_tracks) * 100
+    
+    logger.info("-" * 40)
+    logger.info(f"Total Unique Tracks in History: {total_tracks}")
+    logger.info(f"Cached Audio Features:        {in_history_and_cache}")
+    logger.info(f"Missing Features:             {total_tracks - in_history_and_cache}")
+    logger.info(f"Coverage:                     {percent:.1f}%")
+    logger.info("-" * 40)
+    if percent < 80:
+        logger.info("Tip: Run standard recommendation once to fetch missing features.")
+
+def get_rediscovery_candidates(limit: int = 50) -> list[TrackCandidate]:
+    """Find tracks loved in the past but not played recently (Rediscovery Mode)."""
+    if not USE_LOCAL_HISTORY:
+        logger.warning("Rediscovery Mode requires Local History (skipped)")
+        return []
+    
+    logger.info("Analyze: Searching for 'Rediscovery' gems (old favorites)...")
+    history_df = load_streaming_history()
+    
+    cutoff = pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=config.rediscovery_days)
+    
+    # Tracks played recently (to exclude)
+    recent_mask = history_df['ts'] > cutoff
+    recent_track_ids = set(history_df[recent_mask]['track_id'].unique())
+    
+    # Old tracks (played before cutoff)
+    old_mask = history_df['ts'] <= cutoff
+    old_history = history_df[old_mask]
+    
+    if old_history.empty:
+        logger.info("  -> No listening history found beyond the rediscovery period")
+        return []
+        
+    # Group by track and count plays/time
+    old_stats = old_history.groupby('track_id').agg({
+        'ms_played': 'sum',
+        'track_name': 'first',
+        'artist_name': 'first'
+    })
+    
+    # Filter: Must be "Favorites" (>10 min listening time typical for ~3 songs)
+    # and NOT in recent tracks
+    favorites = old_stats[
+        (old_stats['ms_played'] > 600000) & 
+        (~old_stats.index.isin(recent_track_ids))
+    ]
+    
+    if favorites.empty:
+        logger.info("  -> No old favorites found that haven't been played recently")
+        return []
+        
+    # Pick top N by listening time (most loved)
+    top_rediscovery = favorites.nlargest(limit, 'ms_played')
+    
+    results = []
+    
+    for tid, row in top_rediscovery.iterrows():
+        results.append({
+            'id': tid,
+            'name': row['track_name'],
+            'artist': row['artist_name'],
+            'popularity': 50 # Default
+        })
+        
+    logger.info(f"  -> Found {len(results)} rediscovery candidates")
+    return results
 
 def get_user_profile() -> ProfileResult:
     """Fetches user's top tracks and clusters them into distinct listening moods.
@@ -603,53 +1057,8 @@ def get_user_profile() -> ProfileResult:
     # Build sample weights array matching df order
     sample_weights = np.array([track_id_to_weight.get(tid, 1.0) for tid in df['track_id']])
     
-    # Normalize features
-    scaler = MinMaxScaler()
-    df[FEATURE_COLS] = scaler.fit_transform(df[FEATURE_COLS])
-    
-    # Apply feature weights
-    weights = np.array([FEATURE_WEIGHTS[f] for f in FEATURE_COLS])
-    weighted_features = df[FEATURE_COLS].values * weights
-    
-    # Cluster into distinct listening moods WITH recency sample weights
-    n_clusters = min(N_CLUSTERS, len(df))  # Can't have more clusters than samples
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    df['cluster'] = kmeans.fit_predict(weighted_features, sample_weight=sample_weights)
-    
-    # Get cluster centers and sizes (weighted by recency)
-    cluster_centers = kmeans.cluster_centers_
-    # Cluster weights now account for recency: sum of sample weights per cluster
-    cluster_weight_sums = []
-    for i in range(n_clusters):
-        mask = df['cluster'] == i
-        cluster_weight_sums.append(sample_weights[mask].sum())
-    cluster_weights = np.array(cluster_weight_sums) / sum(cluster_weight_sums)
-    
-    # Compute per-cluster feature statistics for range awareness
-    # This captures the "acceptable range" for each mood
-    cluster_stats = []
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i][FEATURE_COLS]
-        stats = {
-            'mean': cluster_data.mean().values * weights,  # Weighted mean
-            'std': cluster_data.std().values * weights,    # Weighted std
-            'min': cluster_data.min().values * weights,    # Weighted min
-            'max': cluster_data.max().values * weights,    # Weighted max
-        }
-        cluster_stats.append(stats)
-    
-    # Describe the clusters
-    logger.info(f"  -> Detected {n_clusters} distinct listening moods:")
-    for i in range(n_clusters):
-        cluster_data = df[df['cluster'] == i][FEATURE_COLS]
-        dominant_feature = cluster_data.mean().idxmax()
-        energy_level = cluster_data['energy'].mean()
-        valence_level = cluster_data['valence'].mean()
-        mood = "upbeat" if valence_level > 0.5 else "moody"
-        intensity = "high-energy" if energy_level > 0.5 else "chill"
-        # Show range info
-        energy_range = f"{cluster_data['energy'].min():.0%}-{cluster_data['energy'].max():.0%}"
-        logger.info(f"     Mood {i+1}: {intensity} + {mood} ({len(cluster_data)} tracks, energy range: {energy_range})")
+    # --- CLUSTERING ---
+    cluster_centers, cluster_weights, cluster_stats, scaler, weights = train_mood_clusters(df, sample_weights)
     
     # Get Top Artists and Genres (use all collected tracks)
     # Filter out tracks with no artists to avoid IndexError
@@ -662,7 +1071,11 @@ def get_user_profile() -> ProfileResult:
     # Return top genres and artist IDs for collaborative filtering
     top_genres = pd.Series(genres).value_counts().head(5).index.tolist()
     top_artist_ids = artist_ids[:config.top_artists_limit]  # Top artists for related artist lookup
-    return cluster_centers, cluster_weights, cluster_stats, top_genres, top_artist_ids, scaler, weights
+    
+    # API mode doesn't support skip map yet (requires local history)
+    skip_map = {}
+    
+    return cluster_centers, cluster_weights, cluster_stats, top_genres, top_artist_ids, scaler, weights, skip_map
 
 def query_candidates(genres: list[str], saved_ids: set[str], limit: int = 100) -> list[TrackCandidate]:
     """Queries local DB using staged approach for speed.
@@ -738,17 +1151,24 @@ def query_candidates(genres: list[str], saved_ids: set[str], limit: int = 100) -
         placeholders = ','.join(['?' for _ in artist_sample])
         
         # Simpler query without ORDER BY RANDOM (done in Python)
-        track_query = f"""
-            SELECT t.id, t.name, art.name as artist_name, t.popularity
-            FROM tracks t
-            JOIN track_artists ta ON t.rowid = ta.track_rowid
-            JOIN artists art ON ta.artist_rowid = art.rowid
-            WHERE ta.artist_rowid IN ({placeholders})
-            AND t.popularity BETWEEN {config.popularity_min} AND {config.popularity_max}
-            LIMIT {limit * 15}
-        """
+        sql_select = "SELECT t.id, t.name, art.name as artist_name, t.popularity, alb.release_date"
+        sql_from = "FROM tracks t JOIN track_artists ta ON t.rowid = ta.track_rowid JOIN artists art ON ta.artist_rowid = art.rowid JOIN albums alb ON t.album_rowid = alb.rowid"
+        sql_where = f"WHERE ta.artist_rowid IN ({placeholders}) AND t.popularity BETWEEN {config.popularity_min} AND {config.popularity_max}"
+        sql_limit = f"LIMIT {limit * 15}"
         
-        df_tracks = pd.read_sql_query(track_query, con, params=artist_sample)
+        sql_params = list(artist_sample)
+        
+        # Era Logic
+        if config.release_year_min:
+            sql_where += " AND alb.release_date >= ?"
+            sql_params.append(f"{config.release_year_min}-01-01")
+        if config.release_year_max:
+            sql_where += " AND alb.release_date <= ?"
+            sql_params.append(f"{config.release_year_max}-12-31")
+            
+        track_query = f"{sql_select} {sql_from} {sql_where} {sql_limit}"
+        
+        df_tracks = pd.read_sql_query(track_query, con, params=sql_params)
     
     # Filter out saved tracks in Python (faster than SQL NOT IN with large list)
     if exclude_set:
@@ -758,16 +1178,50 @@ def query_candidates(genres: list[str], saved_ids: set[str], limit: int = 100) -
     track_ids = df_tracks['id'].tolist()
     df_features = get_audio_features_from_db(track_ids)
     
-    # Merge, shuffle, and limit
+    # Merge
     df_merged = df_tracks[df_tracks['id'].isin(df_features['track_id'])]
-    df_merged = df_merged.sample(frac=1).head(limit)  # Shuffle + limit in Python
     
-    # Return as list of dicts (using to_dict for speed over iterrows)
+    # === NEW: FILTER BEFORE LIMITING ===
+    # 1. Align features with candidates
+    # Create candidates list first
     df_merged = df_merged.rename(columns={'artist_name': 'artist'})
-    results: list[dict[str, Any]] = df_merged[['id', 'name', 'artist', 'popularity']].to_dict('records')
-    logger.info(f"  -> Found {len(results)} fresh candidates with audio features")
+    candidates_full = df_merged[['id', 'name', 'artist', 'popularity']].to_dict('records')
     
-    return results
+    # 2. Align df_features to match candidates_full order
+    feat_map = {row['track_id']: idx for idx, row in df_features.iterrows()}
+    valid_candidates = []
+    valid_indices = []
+    
+    for c in candidates_full:
+         if c['id'] in feat_map:
+             valid_candidates.append(c)
+             valid_indices.append(feat_map[c['id']])
+             
+    df_features_aligned = df_features.iloc[valid_indices].reset_index(drop=True)
+    
+    # 3. Calculate Camelot Codes
+    camelot_codes = []
+    if 'key' in df_features_aligned.columns and 'mode' in df_features_aligned.columns:
+         for _, row in df_features_aligned.iterrows():
+             camelot_codes.append(get_camelot_code(row['key'], row['mode']))
+    else:
+         camelot_codes = ['??'] * len(df_features_aligned)
+         
+    # 4. Apply Filters
+    logger.info(f"  -> Applying audio filters to {len(valid_candidates)} potential candidates...")
+    _, candidates_filtered, _ = filter_candidates_by_config(
+        df_features_aligned, valid_candidates, camelot_codes
+    )
+    
+    # 5. Sample and Limit
+    if len(candidates_filtered) > limit:
+        candidates_final = random.sample(candidates_filtered, limit)
+        logger.info(f"  -> Sampled {limit} from {len(candidates_filtered)} valid candidates")
+    else:
+        candidates_final = candidates_filtered
+        logger.info(f"  -> Found {len(candidates_final)} valid candidates (below limit of {limit})")
+
+    return candidates_final
 
 def get_related_artist_tracks_api(top_artist_ids: list[str], saved_ids: set[str], limit: int = 50) -> list[TrackCandidate]:
     """Gets tracks from artists similar to user's favorites via Spotify API.
@@ -950,14 +1404,47 @@ def get_similar_artist_tracks_local(top_artist_names: list[str], saved_ids: set[
     
     valid_ids = set(df_features['track_id'].tolist())
     df_tracks = df_tracks[df_tracks['id'].isin(valid_ids)]
-    df_tracks = df_tracks.sample(frac=1).head(limit)  # Shuffle and limit
     
-    # Convert to dict format
+    # === NEW: FILTER BEFORE LIMITING ===
+    # 1. Create candidates list
     df_tracks = df_tracks.rename(columns={'artist_name': 'artist'})
-    results: list[dict[str, Any]] = df_tracks[['id', 'name', 'artist', 'popularity']].to_dict('records')
+    candidates_full = df_tracks[['id', 'name', 'artist', 'popularity']].to_dict('records')
     
-    logger.info(f"  -> Found {len(results)} tracks from similar artists")
-    return results
+    # 2. Align df_features
+    feat_map = {row['track_id']: idx for idx, row in df_features.iterrows()}
+    valid_candidates = []
+    valid_indices = []
+    
+    for c in candidates_full:
+         if c['id'] in feat_map:
+             valid_candidates.append(c)
+             valid_indices.append(feat_map[c['id']])
+             
+    df_features_aligned = df_features.iloc[valid_indices].reset_index(drop=True)
+    
+    # 3. Camelot
+    camelot_codes = []
+    if 'key' in df_features_aligned.columns and 'mode' in df_features_aligned.columns:
+         for _, row in df_features_aligned.iterrows():
+             camelot_codes.append(get_camelot_code(row['key'], row['mode']))
+    else:
+         camelot_codes = ['??'] * len(df_features_aligned)
+         
+    # 4. Filter
+    logger.info(f"  -> Applying audio filters to {len(valid_candidates)} similar tracks...")
+    _, candidates_filtered, _ = filter_candidates_by_config(
+        df_features_aligned, valid_candidates, camelot_codes
+    )
+    
+    # 5. Sample
+    if len(candidates_filtered) > limit:
+        candidates_final = random.sample(candidates_filtered, limit)
+        logger.info(f"  -> Sampled {limit} from {len(candidates_filtered)} similar tracks")
+    else:
+        candidates_final = candidates_filtered
+        logger.info(f"  -> Found {len(candidates_final)} similar tracks")
+        
+    return candidates_final
 
 def get_similar_tracks(top_artists: list[str], saved_ids: set[str], limit: int = 50) -> list[TrackCandidate]:
     """Get tracks from similar artists - dispatches to local or API based on config.
@@ -1003,6 +1490,7 @@ def get_serendipity_tracks(exclude_genres: list[str], saved_ids: set[str], limit
         LIMIT 500
     """
     
+    results = [] # Initialize results list
     try:
         with sqlite3.connect(DB_PATH) as con:
             cursor = con.execute(query, genre_params)
@@ -1019,93 +1507,229 @@ def get_serendipity_tracks(exclude_genres: list[str], saved_ids: set[str], limit
             
             logger.info(f"  -> Sampling from genres: {sampled_genres}")
             
-            # Get random tracks from these artists
-            placeholders = ','.join(['?' for _ in artist_rowids])
-            track_query = f"""
-                SELECT t.id, t.name, art.name as artist_name, t.popularity
-                FROM tracks t
-                JOIN track_artists ta ON t.rowid = ta.track_rowid
-                JOIN artists art ON ta.artist_rowid = art.rowid
-                WHERE ta.artist_rowid IN ({placeholders})
-                AND t.popularity BETWEEN {config.serendipity_popularity_min} AND {config.serendipity_popularity_max}
-                LIMIT 100
-            """
+            # Exclude genres via NOT EXISTS (more reliable than NOT LIKE join)
+            # Ensure exclude_genres is not empty for the IN clause
+            if not exclude_genres:
+                exclusion_placeholders = 'NULL' # No genres to exclude
+                exclude_genres_for_query = []
+            else:
+                exclusion_placeholders = ",".join("?" for _ in exclude_genres)
+                exclude_genres_for_query = exclude_genres
             
-            df_tracks = pd.read_sql_query(track_query, con, params=artist_rowids)
+            sql = f"""
+        SELECT t.id, t.name, a.name, t.popularity
+        FROM tracks t
+        JOIN track_artists ta ON t.rowid = ta.track_rowid
+        JOIN artists a ON ta.artist_rowid = a.rowid
+        JOIN albums alb ON t.album_rowid = alb.rowid
+        WHERE t.popularity BETWEEN ? AND ?
+        AND t.duration_ms >= ?
+        AND NOT EXISTS (
+             SELECT 1 FROM artist_genres ag 
+             WHERE ag.artist_rowid = a.rowid
+             AND ag.genre IN ({exclusion_placeholders})
+        )
+    """
+    
+            params = [config.serendipity_popularity_min, config.serendipity_popularity_max, config.min_play_ms]
+            params.extend(exclude_genres_for_query)
+            
+            # Era Filtering
+            if config.release_year_min:
+                sql += " AND alb.release_date >= ?"
+                params.append(f"{config.release_year_min}-01-01")
+            if config.release_year_max:
+                sql += " AND alb.release_date <= ?"
+                params.append(f"{config.release_year_max}-12-31")
         
-        # Filter out saved tracks
-        if exclude_set:
-            df_tracks = df_tracks[~df_tracks['id'].isin(exclude_set)]
-        
-        # Check for audio features
-        track_ids = df_tracks['id'].tolist()
-        df_features = get_audio_features_from_db(track_ids)
-        
-        if df_features.empty:
-            logger.info("  -> No wild cards with audio features")
-            return []
-        
-        # Keep only tracks with features, shuffle and limit
-        valid_ids = set(df_features['track_id'].tolist())
-        df_tracks = df_tracks[df_tracks['id'].isin(valid_ids)]
-        df_tracks = df_tracks.sample(frac=1).head(limit)
-        
-        # Convert to list of dicts (using to_dict for speed)
-        df_tracks = df_tracks.rename(columns={'artist_name': 'artist'})
-        records = df_tracks[['id', 'name', 'artist', 'popularity']].to_dict('records')
-        results: list[dict[str, Any]] = [
-            {**r, 'link': f"https://open.spotify.com/track/{r['id']}"}
-            for r in records
-        ]
-        
-        logger.info(f"  -> Found {len(results)} wild card tracks")
-        return results
-        
+            # Fetch more than needed and sample in Python (avoids slow ORDER BY RANDOM)
+            sql += " LIMIT ?"
+            params.append(limit * 100)  # Fetch 100x to have pool for random sample
+            
+            # Use the shared connection for the final track query
+            con_shared = DatabaseConnection.get_shared(DB_PATH)
+            rows = con_shared.execute(sql, params).fetchall()
+            
+            # Filter out saved tracks and sample
+            valid_rows = [r for r in rows if r[0] not in saved_ids]
+            if valid_rows:
+                sampled = random.sample(valid_rows, min(limit, len(valid_rows)))
+                for r in sampled:
+                    results.append({
+                        'id': r[0],
+                        'name': r[1],
+                        'artist': r[2],
+                        'popularity': r[3],
+                        'recommended_from': 'Serendipity'
+                    })
+            
     except Exception as e:
-        logger.info(f"  -> Serendipity query failed: {e}")
+        logger.error(f"Error in get_serendipity_tracks: {e}")
         return []
 
+    return results
+        
 
-def score_candidate(cand_weighted: np.ndarray, cluster_centers: np.ndarray, 
-                    cluster_weights: np.ndarray, cluster_stats: list[dict]) -> tuple[float, int, float]:
-    """Score a single candidate against all mood clusters.
+        
+
+
+
+
+
+def score_candidates_vectorized(
+    weighted_matrix: np.ndarray,
+    cluster_centers: np.ndarray,
+    cluster_weights: np.ndarray,
+    cluster_stats: list[dict]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Score all candidates against all clusters using vectorized operations.
     
     Args:
-        cand_weighted: Weighted feature vector for the candidate (1D array)
-        cluster_centers: Array of cluster center vectors
-        cluster_weights: Weight of each cluster (how much of user's listening)
-        cluster_stats: List of dicts with 'mean', 'std' for each cluster
-    
+        weighted_matrix: (N_candidates, N_features) array
+        cluster_centers: (N_clusters, N_features) array
+        cluster_weights: (N_clusters,) array
+        cluster_stats: List of dicts with 'mean', 'std' arrays
+        
     Returns:
-        Tuple of (final_score, best_cluster_index, range_penalty)
+        Tuple of (final_scores, best_mood_indices, range_fits)
     """
-    cluster_scores = []
-    for i, center in enumerate(cluster_centers):
-        # Cosine similarity (direction match)
-        sim = cosine_similarity(cand_weighted.reshape(1, -1), center.reshape(1, -1))[0][0]
-        
-        # Range penalty: penalize if candidate is far outside cluster's typical range
-        stats = cluster_stats[i]
-        std_safe = np.where(stats['std'] > 0.01, stats['std'], 0.01)
-        z_scores = np.abs((cand_weighted - stats['mean']) / std_safe)
-        
-        # Average z-score across features, capped
-        avg_z = np.clip(z_scores, 0, 3).mean()
-        range_penalty = avg_z * RANGE_PENALTY_STRENGTH
-        
-        # Adjusted similarity with range penalty
-        adjusted_sim = max(0, sim * (1 - range_penalty))
-        weighted_sim = adjusted_sim * cluster_weights[i]
-        cluster_scores.append((adjusted_sim, weighted_sim, i, range_penalty))
+    # 1. Calculate Cosine Similarity (N_cand, N_clust)
+    # This is the heavy lifting, done in C via sklearn
+    sim_matrix = cosine_similarity(weighted_matrix, cluster_centers)
     
-    # Best raw match
-    best_sim, best_weighted, best_cluster, best_penalty = max(cluster_scores, key=lambda x: x[0])
+    # 2. Calculate Range Penalties (N_cand, N_clust) using broadcasting
+    # Convert stats to arrays: (1, N_clust, N_features)
+    # Ensure cluster_stats are correctly structured for this
+    means = np.stack([c['mean'] for c in cluster_stats]).reshape(1, len(cluster_stats), -1)
+    stds = np.stack([c['std'] for c in cluster_stats]).reshape(1, len(cluster_stats), -1)
     
-    # Final score: combine best match with weighted average
-    avg_weighted_score = sum(ws for _, ws, _, _ in cluster_scores)
-    final_score = min(1.0, max(0.0, (best_sim * 0.7) + (avg_weighted_score * 0.3)))
+    # Avoid div by zero
+    stds = np.where(stds > 0.01, stds, 0.01)
     
-    return final_score, best_cluster, best_penalty
+    # Expand candidates: (N_cand, 1, N_features)
+    cand_expanded = weighted_matrix[:, np.newaxis, :]
+    
+    # Calculate Z-scores: (N_cand, N_clust, N_features)
+    z_scores = np.abs((cand_expanded - means) / stds)
+    
+    # Cap Z-scores at 3.0 and take mean across features -> (N_cand, N_clust)
+    avg_z = np.clip(z_scores, 0, 3).mean(axis=2)
+    range_penalties = avg_z * RANGE_PENALTY_STRENGTH
+    
+    # 3. Apply Penalties and Weights
+    # Adjusted similarity: (N_cand, N_clust)
+    adjusted_sim = np.maximum(0, sim_matrix * (1 - range_penalties))
+    
+    # Weighted similarity: (N_cand, N_clust)
+    weighted_sim = adjusted_sim * cluster_weights.reshape(1, -1)
+    
+    # 4. Final Scores
+    # Best single match for each candidate
+    best_sim_indices = np.argmax(adjusted_sim, axis=1) # (N_cand,)
+    best_sim_values = adjusted_sim[np.arange(len(adjusted_sim)), best_sim_indices]
+    
+    # Weighted average match
+    avg_weighted_score = weighted_sim.sum(axis=1)
+    
+    # Combine: 70% best match, 30% aggregate match
+    final_scores = (best_sim_values * 0.7) + (avg_weighted_score * 0.3)
+    final_scores = np.clip(final_scores, 0.0, 1.0)
+    
+    # Get range fit for the best cluster
+    best_penalties = range_penalties[np.arange(len(range_penalties)), best_sim_indices]
+    range_fits = 1.0 - best_penalties
+    
+    return final_scores, best_sim_indices, range_fits
+
+
+def filter_candidates_by_config(
+    df_features: pd.DataFrame, 
+    candidates: list[TrackCandidate], 
+    camelot_codes: list[str]
+) -> tuple[pd.DataFrame, list[TrackCandidate], list[str]]:
+    """Apply all configuration-based audio filters to candidates.
+    
+    Returns filtered dataframe, candidate list, and camelot codes, all aligned.
+    """
+    if df_features.empty:
+        return df_features, [], []
+        
+    mask = pd.Series([True] * len(df_features), index=df_features.index)
+    
+    # Speechiness Filter
+    if config.max_speechiness is not None:
+        mask &= (df_features['speechiness'] <= config.max_speechiness)
+        
+    # Acoustic Option
+    if config.acoustic_option == 'acoustic':
+        mask &= (df_features['acousticness'] >= 0.7)
+    elif config.acoustic_option == 'electric':
+        mask &= (df_features['acousticness'] <= 0.3)
+        
+    # Liveness Option
+    if config.liveness_option == 'live':
+        mask &= (df_features['liveness'] >= 0.8)
+    elif config.liveness_option == 'studio':
+        mask &= (df_features['liveness'] <= 0.2)
+        
+    # Tempo (BPM) Filter (Smart BPM support)
+    if config.min_tempo is not None or config.max_tempo is not None:
+        min_t = config.min_tempo or 0
+        max_t = config.max_tempo or 999
+        
+        # Add fuzziness if exact match requested (floats are rarely exact)
+        if config.min_tempo is not None and config.max_tempo is not None:
+            if config.min_tempo == config.max_tempo:
+                min_t -= 1.0
+                max_t += 1.0
+        
+        if config.smart_bpm:
+            # Allow: Standard range OR Double range OR Half range
+            # e.g. 120-130 -> allows 120-130, 240-260, 60-65
+            bpm_mask = (df_features['tempo'] >= min_t) & (df_features['tempo'] <= max_t)
+            bpm_mask |= (df_features['tempo'] >= min_t * 2) & (df_features['tempo'] <= max_t * 2)
+            bpm_mask |= (df_features['tempo'] >= min_t / 2) & (df_features['tempo'] <= max_t / 2)
+            mask &= bpm_mask
+        else:
+            # Strict range
+            if config.min_tempo: mask &= (df_features['tempo'] >= min_t)
+            if config.max_tempo: mask &= (df_features['tempo'] <= max_t)
+
+    # Vocal/Instrumental Filter (Speechiness/Instrumentalness combo)
+    if config.vocal_mode == 'instrumental_only':
+        mask &= (df_features['instrumentalness'] > 0.5)
+    elif config.vocal_mode == 'vocal_only':
+        mask &= (df_features['instrumentalness'] < 0.5)
+
+    # Key/Mode Filter (Raw)
+    if config.mode_filter == 'minor':
+        if 'mode' in df_features.columns: mask &= (df_features['mode'] == 0)
+    elif config.mode_filter == 'major':
+        if 'mode' in df_features.columns: mask &= (df_features['mode'] == 1)
+
+    # DJ Mode / Target Camelot Filter
+    if config.target_camelot:
+        compatible_keys = get_compatible_camelot_keys(config.target_camelot)
+        # Filter mask based on calculated codes
+        camelot_mask = pd.Series([c in compatible_keys for c in camelot_codes], index=df_features.index)
+        mask &= camelot_mask
+        
+    if not mask.all():
+         logger.info(f"  -> Audio filters removed {len(df_features) - mask.sum()} candidates")
+         df_filtered = df_features[mask].copy()
+         
+         # Filter candidates and camelot_codes maintaining alignment
+         # Using list comprehension with enumerate + iloc check on the mask
+         # Note: mask is a Series with same index as df_features. 
+         # Since candidates/codes list are 0-indexed aligned with df_features rows:
+         valid_indices = [i for i in range(len(df_features)) if mask.iloc[i]]
+         
+         candidates_filtered = [candidates[i] for i in valid_indices]
+         camelot_codes_filtered = [camelot_codes[i] for i in valid_indices]
+         
+         return df_filtered, candidates_filtered, camelot_codes_filtered
+    
+    return df_features, candidates, camelot_codes
 
 
 def recommend(
@@ -1114,9 +1738,10 @@ def recommend(
     cluster_stats: list[ClusterStats],
     candidates: list[TrackCandidate],
     scaler: MinMaxScaler,
-    weights: np.ndarray
+    weights: np.ndarray,
+    skip_map: dict[str, float] = {}
 ) -> list[TrackCandidate]:
-    """Ranks candidates by best match to any listening mood cluster with range awareness.
+    """Ranks candidates by best match to any listening mood cluster using vectorized scoring.
     
     Args:
         candidates: List of dicts with 'id', 'name', 'artist', 'popularity' keys
@@ -1126,9 +1751,6 @@ def recommend(
     """
     logger.info(f"Ranking: Analyzing {len(candidates)} candidates against {len(cluster_centers)} mood clusters...")
     
-    # Build lookup dict for O(1) candidate access (fixes O(n²) issue)
-    candidates_by_id = {c['id']: c for c in candidates}
-    
     candidate_ids = [c['id'] for c in candidates]
     df_features = get_audio_features_from_db(candidate_ids)
     
@@ -1136,39 +1758,87 @@ def recommend(
         logger.warning("  -> No audio features found for candidates")
         return []
     
-    # Batch transform all candidates at once (vectorized)
+    # Align df_features with candidates list (DB might return different order or missing rows)
+    # Create lookup map
+    feat_map = {row['track_id']: idx for idx, row in df_features.iterrows()}
+    
+    # Filter candidates to those we have features for and keep order consistent with matrix
+    valid_candidates = []
+    valid_indices = []
+    
+    for c in candidates:
+        if c['id'] in feat_map:
+            valid_candidates.append(c)
+            valid_indices.append(feat_map[c['id']])
+            
+            
+    # Reorder features dataframe to match valid_candidates order
+    df_features = df_features.iloc[valid_indices]
+    
+    # Pre-calculate Camelot Codes for all candidates
+    camelot_codes = []
+    if 'key' in df_features.columns and 'mode' in df_features.columns:
+        for idx, row in df_features.iterrows():
+            camelot_codes.append(get_camelot_code(row['key'], row['mode']))
+    else:
+        camelot_codes = ['??'] * len(df_features)
+
+    # --- APPLY FILTERS ---
+    df_features, valid_candidates, camelot_codes = filter_candidates_by_config(
+        df_features, valid_candidates, camelot_codes
+    )
+    
+    if df_features.empty:
+        logger.warning("  -> No candidates remain after audio filters.")
+        return []
+
+    # Transform features matrix
     feature_matrix = df_features[FEATURE_COLS].values.astype(float)
     normalized_matrix = scaler.transform(feature_matrix)
     weighted_matrix = normalized_matrix * weights
     
-    results = []
-    
-    for idx, (_, row) in enumerate(df_features.iterrows()):
-        try:
-            cand_weighted = weighted_matrix[idx]
+    # Run vectorized scoring
+    try:
+        final_scores, best_clusters, range_fits = score_candidates_vectorized(
+            weighted_matrix, cluster_centers, cluster_weights, cluster_stats
+        )
+        
             
-            # Use shared scoring function
-            final_score, best_cluster, best_penalty = score_candidate(
-                cand_weighted, cluster_centers, cluster_weights, cluster_stats
-            )
+        # Assemble results
+        results = []
+        for i, cand in enumerate(valid_candidates):
+            score = float(final_scores[i])
             
-            track_info = candidates_by_id.get(row['track_id'])
-            if track_info:
-                results.append({
-                    'name': track_info['name'],
-                    'artist': track_info['artist'],
-                    'popularity': track_info['popularity'],
-                    'id': row['track_id'],
-                    'score': final_score,
-                    'best_mood': best_cluster + 1,
-                    'range_fit': f"{(1-best_penalty)*100:.0f}%",
-                    'link': f"https://open.spotify.com/track/{row['track_id']}"
-                })
-        except Exception as e:
-            logger.debug(f"  -> Skipped track {row['track_id']}: {e}")
-            continue
+            # Apply Skip Penalty (if configured)
+            # If track has > 50% skip rate historically, penalize it
+            if config.penalize_skips and cand['id'] in skip_map:
+                skip_rate = skip_map[cand['id']]
+                if skip_rate > 0.5:
+                    penalty = config.skip_penalty * skip_rate # e.g. 0.5 * 0.8 = 0.4 penalty
+                    score *= (1.0 - penalty)
+                    
+            results.append({
+                'name': cand['name'],
+                'artist': cand['artist'],
+                'popularity': cand['popularity'],
+                'id': cand['id'],
+                'score': score,
+                'best_mood': int(best_clusters[i] + 1),
+                'range_fit': f"{range_fits[i]*100:.0f}%",
+                'camelot': camelot_codes[i],
+                'bpm': int(df_features.iloc[i]['tempo']),
+                'link': f"https://open.spotify.com/track/{cand['id']}"
+            })
+            
+        return sorted(results, key=lambda x: x['score'], reverse=True)
+        
+    except Exception as e:
+        logger.error(f"Vectorized scoring failed: {e}")
+        # Fallback to empty if critical math error, but this shouldn't happen with sanitized inputs
+        import traceback
+        traceback.print_exc()
+        return []
 
-    return sorted(results, key=lambda x: x['score'], reverse=True)
 
 def run_fast_mode() -> None:
     """Fast mode using mock data for quick prototyping."""
@@ -1180,11 +1850,6 @@ def run_fast_mode() -> None:
     
     # Simulate user profile building
     logger.info("Analyze: Building mock user profile...")
-    scaler = MinMaxScaler()
-    mock_features[FEATURE_COLS] = scaler.fit_transform(mock_features[FEATURE_COLS])
-    
-    weights = np.array([FEATURE_WEIGHTS[f] for f in FEATURE_COLS])
-    weighted_features = mock_features[FEATURE_COLS].values * weights
     
     # Show recency weighting info (matching real implementation)
     if RECENCY_DECAY != 1.0:
@@ -1192,66 +1857,61 @@ def run_fast_mode() -> None:
               f"medium=10 (x{RECENCY_DECAY**1:.1f}), "
               f"long=10 (x{RECENCY_DECAY**0:.1f})")
     
-    # Cluster WITH recency sample weights (testing the same code path)
-    kmeans = KMeans(n_clusters=N_CLUSTERS, random_state=42, n_init=10)
-    mock_features['cluster'] = kmeans.fit_predict(weighted_features, sample_weight=mock_sample_weights)
+    # Use shared clustering logic
+    cluster_centers, cluster_weights, cluster_stats, scaler, weights = train_mood_clusters(mock_features, mock_sample_weights)
     
-    cluster_centers = kmeans.cluster_centers_
-    
-    # Calculate cluster weights using recency-weighted sums (matching real implementation)
-    cluster_weight_sums = []
-    for i in range(N_CLUSTERS):
-        mask = mock_features['cluster'] == i
-        cluster_weight_sums.append(mock_sample_weights[mask].sum())
-    cluster_weights = np.array(cluster_weight_sums) / sum(cluster_weight_sums)
-    
-    # Compute cluster stats
-    cluster_stats = []
-    for i in range(N_CLUSTERS):
-        cluster_data = mock_features[mock_features['cluster'] == i][FEATURE_COLS]
-        stats = {
-            'mean': cluster_data.mean().values * weights,
-            'std': cluster_data.std().values * weights,
-            'min': cluster_data.min().values * weights,
-            'max': cluster_data.max().values * weights,
-        }
-        cluster_stats.append(stats)
-    
-    logger.info(f"  -> Detected {N_CLUSTERS} mock moods")
     logger.info(f"  -> Mock genres: ['mock-rock', 'mock-electronic']")
     logger.info(f"  -> {len(mock_candidates)} mock candidates")
     
+    # Filter candidates in fast mode to verify logic
+    df_features = mock_candidate_features
+    
+    # Pre-calculate Camelot Codes
+    camelot_codes = []
+    if 'key' in df_features.columns and 'mode' in df_features.columns:
+        for idx, row in df_features.iterrows():
+            camelot_codes.append(get_camelot_code(row['key'], row['mode']))
+    else:
+        camelot_codes = ['??'] * len(df_features)
+
+    # --- APPLY FILTERS ---
+    df_features, mock_candidates, camelot_codes = filter_candidates_by_config(
+        df_features, mock_candidates, camelot_codes
+    )
+         
+    if df_features.empty:
+        logger.warning("  -> No candidates remain after audio filters.")
+        return
+
     # Use shared scoring logic (same as recommend())
     logger.info(f"Ranking: Analyzing {len(mock_candidates)} candidates...")
     
-    # Build lookup dict for O(1) candidate access
-    candidates_by_id = {c['id']: c for c in mock_candidates}
-    
     # Batch transform all candidates at once (vectorized)
-    feature_matrix = mock_candidate_features[FEATURE_COLS].values.astype(float)
+    feature_matrix = df_features[FEATURE_COLS].values.astype(float)
     normalized_matrix = scaler.transform(feature_matrix)
     weighted_matrix = normalized_matrix * weights
     
+    # Run vectorized scoring
+    final_scores, best_clusters, range_fits = score_candidates_vectorized(
+        weighted_matrix, cluster_centers, cluster_weights, cluster_stats
+    )
+    
     results = []
-    for idx, (_, row) in enumerate(mock_candidate_features.iterrows()):
-        cand_weighted = weighted_matrix[idx]
+    # Using mock_candidates directly as it aligns 1:1 with mock_candidate_features indices in generation
+    for i, cand in enumerate(mock_candidates):
+        score = float(final_scores[i])
         
-        # Use shared scoring function
-        final_score, best_cluster, best_penalty = score_candidate(
-            cand_weighted, cluster_centers, cluster_weights, cluster_stats
-        )
-        
-        track_info = candidates_by_id.get(row['track_id'])
-        if track_info:
-            results.append({
-                'name': track_info['name'],
-                'artist': track_info['artist'],
-                'popularity': track_info['popularity'],
-                'score': final_score,
-                'best_mood': best_cluster + 1,
-                'range_fit': f"{(1-best_penalty)*100:.0f}%",
-                'link': f"https://open.spotify.com/track/{row['track_id']}"
-            })
+        results.append({
+            'name': cand['name'],
+            'artist': cand['artist'],
+            'popularity': cand['popularity'],
+            'score': float(final_scores[i]),
+            'best_mood': int(best_clusters[i] + 1),
+            'range_fit': f"{range_fits[i]*100:.0f}%",
+            'camelot': camelot_codes[i],
+            'bpm': int(df_features.iloc[i]['tempo']),
+            'link': f"https://open.spotify.com/track/{cand['id']}"
+        })
     
     results = sorted(results, key=lambda x: x['score'], reverse=True)
     
@@ -1277,7 +1937,7 @@ def run_fast_mode() -> None:
     for i, track in enumerate(results[:min(config.console_preview_count, available_ranked)]):
         logger.info(f"\n{i+1}. {track['name']}")
         logger.info(f"   by {track['artist']}")
-        logger.info(f"   Match: {track['score']:.0%} | Mood #{track['best_mood']} | Range: {track['range_fit']}")
+        logger.info(f"   Match: {track['score']:.0%} | Mood #{track['best_mood']} | Key: {track.get('camelot')} | BPM: {track.get('bpm')}")
     
     if available_ranked > config.console_preview_count:
         logger.info(f"\n   ... and {available_ranked - config.console_preview_count} more mood-matched tracks")
@@ -1292,29 +1952,68 @@ def run_fast_mode() -> None:
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(description='DIY Discovery: Spotify Playlist Generator')
+    parser.add_argument('--fast', action='store_true', help='Run in fast mode with mock data for testing')
+    parser.add_argument('--skip-spotify', action='store_true', help='Do not create Spotify playlist')
+    parser.add_argument('--skip-tidal', action='store_true', help='Do not sync to Tidal')
+    parser.add_argument('--seed_playlist', type=str, help='Use specific Spotify Playlist ID as seed instead of history')
+    parser.add_argument('--coverage', action='store_true', help='Show database coverage report and exit')
+    
+    ARGS = parser.parse_args()
+
     if ARGS.fast:
         run_fast_mode()
     else:
         try:
-            # 1. Get saved tracks to exclude
-            saved_ids = get_saved_track_ids()
+            # --- MAIN EXECUTION FLOW ---
+    
+            # 0. Check for Utility Modes
+            if ARGS.coverage:
+                print_coverage_report()
+                sys.exit(0) # Exit after report
+
+            # 1. Load Data
+            try:
+                # Check if DB needs optimization (vacuukm)
+                # optimize_db() 
+                pass
+            except Exception as e:
+                logger.warning(f"DB maintenance warning: {e}")
+                
+            logger.info(f"Analyze: Building profile...")
             
             # 2. Get User Profile (clustered into moods with range stats)
-            cluster_centers, cluster_weights, cluster_stats, fav_genres, top_artist_ids, scaler, weights = get_user_profile()
-            logger.info(f"  -> Your top genres: {fav_genres}")
-            
+            # Either from History or from Seed Playlist
+            saved_ids: set[str] = set() # Initialize for all paths
+            if ARGS.seed_playlist:
+                cluster_centers, cluster_weights, cluster_stats, fav_genres, top_artist_ids, scaler, weights, skip_map = get_playlist_profile(ARGS.seed_playlist)
+                logger.info(f"  -> Profiling seed playlist: {ARGS.seed_playlist}")
+                logger.info(f"  -> Top Artists in playlist: {top_artist_ids[:3]}")
+                # For playlist seeding, we don't have user's saved tracks unless explicitly fetched
+                # For now, assume no saved tracks to exclude if seeding from playlist
+                saved_ids = set() 
+            else:
+                saved_ids = get_saved_track_ids()
+                cluster_centers, cluster_weights, cluster_stats, fav_genres, top_artist_ids, scaler, weights, skip_map = get_user_profile()
+                logger.info(f"  -> Your top genres: {fav_genres}")
+                
             # 3. Get Candidates from BOTH sources (hybrid approach)
             # Source A: Genre-based from local DB (content-based)
             genre_candidates = query_candidates(fav_genres, saved_ids, limit=GENRE_CANDIDATES_LIMIT)
             
             # Source B: Similar artists (genre-based local or API, based on config)
-            # Note: top_artist_ids is artist IDs (API mode) or artist names (local mode)
             related_candidates = get_similar_tracks(top_artist_ids, saved_ids, limit=RELATED_CANDIDATES_LIMIT)
             
+            # Source C: Rediscovery (Old favorites, if enabled)
+            rediscovery_candidates = []
+            if config.rediscovery_mode:
+                 rediscovery_candidates = get_rediscovery_candidates(limit=50)
+
             # Combine and deduplicate
             seen_ids = set()
             candidates = []
-            for c in genre_candidates + related_candidates:
+            for c in genre_candidates + related_candidates + rediscovery_candidates:
                 if c['id'] not in seen_ids:
                     seen_ids.add(c['id'])
                     candidates.append(c)
@@ -1325,10 +2024,11 @@ if __name__ == "__main__":
                 logger.info("No candidates found. Try running again for different random results.")
             else:
                 # 4. Rank Candidates against mood clusters (with range awareness)
-                recommendations = recommend(cluster_centers, cluster_weights, cluster_stats, candidates, scaler, weights)
+                recommendations = recommend(cluster_centers, cluster_weights, cluster_stats, candidates, scaler, weights, skip_map)
                 
-                # 5. Get serendipity wild cards (outside user's genre bubble)
-                wild_cards = get_serendipity_tracks(fav_genres, saved_ids, limit=SERENDIPITY_SLOTS)
+                # 5. Get serendipity wild cards (outside user's genre bubble and blocklist)
+                exclude_genres = fav_genres + (config.blocked_genres if config.blocked_genres else [])
+                wild_cards = get_serendipity_tracks(exclude_genres, saved_ids, limit=SERENDIPITY_SLOTS)
                 
                 # 6. Output
                 logger.info("\n" + "="*60)
@@ -1344,7 +2044,7 @@ if __name__ == "__main__":
                 for i, track in enumerate(top_ranked[:config.console_preview_count]):  # Show first N in console
                     logger.info(f"\n{i+1}. {track['name']}")
                     logger.info(f"   by {track['artist']}")
-                    logger.info(f"   Match: {track['score']:.0%} | Mood #{track['best_mood']} | Range: {track['range_fit']}")
+                    logger.info(f"   Match: {track['score']:.0%} | Mood #{track['best_mood']} | Key: {track.get('camelot')} | BPM: {track.get('bpm')}")
                 
                 if len(top_ranked) > 10:
                     logger.info(f"\n   ... and {len(top_ranked) - 10} more mood-matched tracks")
@@ -1371,7 +2071,7 @@ if __name__ == "__main__":
                     f.write("-" * 40 + "\n")
                     for i, track in enumerate(top_ranked):
                         f.write(f"\n{i+1}. {track['name']} - {track['artist']}\n")
-                        f.write(f"   Match: {track['score']:.0%} | Mood: #{track['best_mood']} | Range: {track['range_fit']} | Pop: {track['popularity']}\n")
+                        f.write(f"   Match: {track['score']:.0%} | Key: {track.get('camelot')} | BPM: {track.get('bpm')}\n")
                         f.write(f"   Why: Similarity scoring against your listening clusters\n")
                         f.write(f"   {track['link']}\n")
                     
@@ -1383,7 +2083,8 @@ if __name__ == "__main__":
                             f.write(f"\n{idx}. {track['name']} - {track['artist']}\n")
                             f.write(f"   Pop: {track['popularity']} | 🎲 Random discovery\n")
                             f.write(f"   Why: Serendipity pick from outside your usual genres\n")
-                            f.write(f"   {track['link']}\n")
+                            link = track.get('link') or f"https://open.spotify.com/track/{track['id']}"
+                            f.write(f"   {link}\n")
                 
                 logger.info(f"\n📝 Tracklist saved to: {tracklist_path}")
                 

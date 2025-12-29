@@ -27,7 +27,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 def find_python_with_spotipy():
     """Find a Python with spotipy installed."""
     candidates = [
-        '/home/jon/anaconda3/bin/python',  # User's anaconda
         os.path.expanduser('~/anaconda3/bin/python'),
         os.path.expanduser('~/miniconda3/bin/python'),
         'python',
