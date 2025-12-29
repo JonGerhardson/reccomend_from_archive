@@ -1049,9 +1049,12 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">Output Configuration</span>
-                        Controls how many tracks appear in your final playlist. <strong>Total Tracks</strong> sets the
-                        playlist size. <strong>Serendipity</strong> adds wild-card tracks outside your usual taste.
-                        <strong>Saved Cap</strong> limits how many of your saved tracks to check for duplicates.
+                        <strong>Total Tracks</strong> (5-100): Final playlist size. 20-35 is typical for a listening
+                        session.<br><br>
+                        <strong>Serendipity</strong> (0-10): Wild-card slots filled with tracks outside your usual
+                        genres. Higher = more surprises. Set to 0 for strict matching.<br><br>
+                        <strong>Saved Cap</strong> (100-2000): How many of your saved/liked tracks to check when
+                        filtering duplicates. Higher = fewer repeats but slower.
                     </div>
                 </div>
             </div>
@@ -1102,10 +1105,13 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">Candidate Pool Sizes</span>
-                        Sets the size of track pools before final selection. <strong>Genre Pool</strong> = tracks from
-                        matching genres. <strong>Related Pool</strong> = tracks from similar artists. <strong>Profile
-                            Limit</strong> = your top tracks used to build your taste profile. Larger pools = more
-                        variety but slower.
+                        Controls how many tracks to consider before final selection.<br><br>
+                        <strong>Genre Pool</strong> (50-500): Tracks pulled from your preferred genres. More = better
+                        variety but slower. 200 is a good balance.<br><br>
+                        <strong>Related Pool</strong> (20-200): Tracks from artists similar to your favorites. These
+                        often surface hidden gems.<br><br>
+                        <strong>Profile Limit</strong> (50-500): Your top tracks used to build your taste profile. More
+                        = more accurate moods but slower startup.
                     </div>
                 </div>
             </div>
@@ -1158,10 +1164,14 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">AI Taste Analysis</span>
-                        <strong>Moods</strong> = distinct listening profiles detected (e.g., workout vs. chill).
-                        <strong>Recency</strong> = how much to favor recent listening habits vs. all-time. <strong>Range
-                            Penalty</strong> = penalizes tracks too far from your taste. <strong>Genre Mode</strong> =
-                        how strictly to match genres (exact, prefix, or fuzzy).
+                        <strong>Moods</strong> (1-8): Number of distinct listening profiles to detect (workout, chill,
+                        focus, etc.). More moods = more diverse results. Start with 3.<br><br>
+                        <strong>Recency</strong> (1.0-5.0): How much to favor recent listening. 1.0 = equal weight to
+                        all history. 3.0+ = heavily favor last few weeks.<br><br>
+                        <strong>Range Penalty</strong> (0.0-0.3): Penalizes tracks that stray too far from any of your
+                        moods. Higher = stricter matching. 0.1 is gentle.<br><br>
+                        <strong>Genre Mode</strong>: exact = "indie rock" only. prefix = "indie" matches "indie rock",
+                        "indie pop". fuzzy = loose matching.
                     </div>
                 </div>
             </div>
@@ -1224,10 +1234,16 @@
                 <div class="module-help">?
                     <div class="tooltip">
                         <span class="tooltip-title">Data Source Settings</span>
-                        <strong>Local History</strong> = use your downloaded Spotify data instead of API (more
-                        accurate, private). <strong>API Artists</strong> = use Spotify's related artists API instead
-                        of genre-based matching. <strong>History Path</strong> = folder containing your extended
-                        streaming history JSON files.
+                        <strong>Local History</strong>: Use your downloaded Spotify Extended Streaming History (more
+                        accurate, includes play counts and timestamps). Recommended ON.<br><br>
+                        <strong>API Artists</strong>: Use Spotify's "related artists" API instead of genre-overlap
+                        matching. API is better for niche genres, genre-matching is better for diverse tastes.<br><br>
+                        <strong>Penalize Skips</strong>: Reduce score for tracks you've historically skipped. Helps
+                        filter out false positives.<br><br>
+                        <strong>Rediscovery</strong>: Include tracks you haven't played recently. Great for revisiting
+                        forgotten favorites.<br><br>
+                        <strong>Seed Playlist</strong>: Override your history and use a specific playlist as the taste
+                        source. Great for "find me more like this playlist".
                     </div>
                 </div>
             </div>
@@ -1246,10 +1262,29 @@
                     </div>
                     <div class="toggle-led"></div>
                 </div>
+                <div class="toggle-group">
+                    <div class="toggle-label">Penalize Skips</div>
+                    <div class="toggle-switch on" data-id="penalize_skips" onclick="toggleSwitch(this)">
+                        <div class="toggle-handle"></div>
+                    </div>
+                    <div class="toggle-led"></div>
+                </div>
+                <div class="toggle-group">
+                    <div class="toggle-label">Rediscovery</div>
+                    <div class="toggle-switch" data-id="rediscovery_mode" onclick="toggleSwitch(this)">
+                        <div class="toggle-handle"></div>
+                    </div>
+                    <div class="toggle-led"></div>
+                </div>
                 <div class="input-group">
                     <div class="input-label">History Path</div>
                     <input type="text" class="text-input" id="history_path"
-                        value="my_spotify_data/Spotify Extended Streaming History">
+                        value="my_spotify_data(2)/Spotify Extended Streaming History">
+                </div>
+                <div class="input-group" style="margin-top: 12px;">
+                    <div class="input-label">Seed Playlist (Optional - overrides history)</div>
+                    <input type="text" class="text-input" id="seed_playlist"
+                        placeholder="Paste Spotify playlist URL or ID">
                 </div>
                 <div class="knob-group orange">
                     <div class="knob-label">Top Artists</div>
@@ -1273,156 +1308,418 @@
                     </div>
                     <div class="knob-value">10</div>
                 </div>
+                <div class="knob-group orange">
+                    <div class="knob-label">Skip Penalty</div>
+                    <div class="knob" data-id="skip_penalty" data-min="0" data-max="1" data-value="0.5" data-step="0.1">
+                        <div class="knob-outer">
+                            <div class="knob-inner orange">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">0.5</div>
+                </div>
+                <div class="knob-group orange">
+                    <div class="knob-label">Repeat Boost</div>
+                    <div class="knob" data-id="repeat_boost" data-min="1" data-max="3" data-value="1.2" data-step="0.1">
+                        <div class="knob-outer">
+                            <div class="knob-inner orange">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">1.2</div>
+                </div>
+                <div class="knob-group orange">
+                    <div class="knob-label">Wait (Days)</div>
+                    <div class="knob" data-id="rediscovery_days" data-min="30" data-max="730" data-value="365"
+                        data-step="10">
+                        <div class="knob-outer">
+                            <div class="knob-inner orange">
+                                <div class="knob-indicator"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="knob-value">365</div>
+                </div>
             </div>
         </div>
+    </div>
 
-        <!-- Thresholds Module -->
-        <div class="module" id="thresholds">
-            <div class="module-header">
-                <div class="module-led" style="background: var(--accent-pink); box-shadow: 0 0 8px var(--accent-pink);">
-                </div>
-                <div class="module-title">Popularity Thresholds</div>
-                <div class="module-help">?
-                    <div class="tooltip">
-                        <span class="tooltip-title">Discovery vs. Mainstream</span>
-                        Controls the popularity range for candidate tracks (0-100 scale). Lower values =
-                        underground/obscure. Higher values = mainstream hits. <strong>Min Play</strong> = skip plays
-                        shorter than this (filters skipped tracks). Separate ranges for genre matches, similar
-                        artists, and wild card picks.
-                    </div>
-                </div>
+    <!-- Filters Module -->
+    <div class="module" id="filters">
+        <div class="module-header">
+            <div class="module-led" style="background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan);">
             </div>
-            <div class="module-body">
-                <div class="knob-group pink">
-                    <div class="knob-label">Min Play (ms)</div>
-                    <div class="knob" data-id="min_play_ms" data-min="10000" data-max="120000" data-value="30000"
-                        data-step="1000">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">30000</div>
-                </div>
-                <div class="knob-group pink">
-                    <div class="knob-label">Genre Min</div>
-                    <div class="knob" data-id="popularity_min" data-min="0" data-max="50" data-value="5">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">5</div>
-                </div>
-                <div class="knob-group pink">
-                    <div class="knob-label">Genre Max</div>
-                    <div class="knob" data-id="popularity_max" data-min="20" data-max="100" data-value="50">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">50</div>
-                </div>
-                <div class="knob-group pink">
-                    <div class="knob-label">Similar Min</div>
-                    <div class="knob" data-id="similar_popularity_min" data-min="0" data-max="50" data-value="5">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">5</div>
-                </div>
-                <div class="knob-group pink">
-                    <div class="knob-label">Similar Max</div>
-                    <div class="knob" data-id="similar_popularity_max" data-min="20" data-max="100" data-value="60">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">60</div>
-                </div>
-                <div class="knob-group pink">
-                    <div class="knob-label">Wild Min</div>
-                    <div class="knob" data-id="serendipity_popularity_min" data-min="0" data-max="50" data-value="10">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">10</div>
-                </div>
-                <div class="knob-group pink">
-                    <div class="knob-label">Wild Max</div>
-                    <div class="knob" data-id="serendipity_popularity_max" data-min="20" data-max="100" data-value="60">
-                        <div class="knob-outer">
-                            <div class="knob-inner pink">
-                                <div class="knob-indicator"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="knob-value">60</div>
+            <div class="module-title">Timeframe & Filters</div>
+            <div class="module-help">?
+                <div class="tooltip">
+                    <span class="tooltip-title">History & Track Filters</span>
+                    <strong>Decade/Era</strong>: Filter recommendations by release year. "Any Era" = no filter.<br><br>
+                    <strong>Start/End Date</strong>: Only analyze listening history within this date range. Useful for
+                    seasonal preferences (summer playlists, etc.).<br><br>
+                    <strong>Blocklist</strong>: Comma-separated genres to exclude (e.g., "country, christmas, kids").
+                    Case-insensitive.<br><br>
+                    <strong>Acoustic/Liveness</strong>: Filter by recording type. "Any" = no filter.<br><br>
+                    <strong>Max Speechiness</strong>: Filter out spoken word (0.0-1.0). 0.3 removes most
+                    podcasts/comedy.
                 </div>
             </div>
         </div>
+        <div class="module-body">
+            <div class="select-group" style="display: inline-block; width: 45%; margin-right: 15px;">
+                <div class="select-label">Decade / Era</div>
+                <div class="select-wrapper">
+                    <div class="select-display" id="decade_select_display">Any Era</div>
+                    <select id="decade_select" onchange="updateSelectDisplay(this)">
+                        <option value="any" selected>Any Era</option>
+                        <option value="1960">1960s (1960-1969)</option>
+                        <option value="1970">1970s (1970-1979)</option>
+                        <option value="1980">1980s (1980-1989)</option>
+                        <option value="1990">1990s (1990-1999)</option>
+                        <option value="2000">2000s (2000-2009)</option>
+                        <option value="2010">2010s (2010-2019)</option>
+                        <option value="2020">2020s (2020-2029)</option>
+                    </select>
+                </div>
+            </div>
 
-        <!-- Output Options Module -->
-        <div class="module" id="output-options">
-            <div class="module-header">
-                <div class="module-led"
-                    style="background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green);"></div>
-                <div class="module-title">Output Options</div>
-                <div class="module-help">?
-                    <div class="tooltip">
-                        <span class="tooltip-title">Playlist Destinations</span>
-                        Choose where to save your generated playlist. <strong>Spotify</strong> creates/updates a
-                        playlist in your Spotify account. <strong>Tidal</strong> syncs to your Tidal account using
-                        spotify_to_tidal.
-                    </div>
-                </div>
+            <div class="input-group"
+                style="max-width: 140px; display: inline-block; margin-right: 15px; display: none;">
+                <div class="input-label">Start Date</div>
+                <input type="date" class="text-input" id="date_start" style="width: 100%;">
             </div>
-            <div class="module-body">
-                <div class="checkbox-group spotify">
-                    <input type="checkbox" class="checkbox" id="save_to_spotify" checked>
-                    <label class="checkbox-label" for="save_to_spotify">Save to Spotify</label>
-                </div>
-                <div class="checkbox-group tidal">
-                    <input type="checkbox" class="checkbox" id="save_to_tidal" checked>
-                    <label class="checkbox-label" for="save_to_tidal">Sync to Tidal</label>
-                </div>
+            <div class="input-group" style="max-width: 140px; display: inline-block; display: none;">
+                <div class="input-label">End Date</div>
+                <input type="date" class="text-input" id="date_end" style="width: 100%;">
             </div>
-        </div>
+            <div class="input-group" style="width: 100%; max-width: 100%; margin-top: 12px; margin-bottom: 15px;">
+                <div class="input-label">Genre Blocklist (Comma Separated)</div>
+                <input type="text" class="text-input" id="blocked_genres"
+                    placeholder="e.g. christmas, children, audiobook">
+            </div>
 
-        <!-- Feature Weights Mixer -->
-        <div class="module" id="feature-weights">
-            <div class="module-header">
-                <div class="module-led"
-                    style="background: var(--accent-yellow); box-shadow: 0 0 8px var(--accent-yellow);"></div>
-                <div class="module-title">Audio Feature Mixer</div>
-                <div class="module-help">?
-                    <div class="tooltip">
-                        <span class="tooltip-title">Audio Similarity Weights</span>
-                        Controls how much each audio characteristic matters when matching tracks. High = prioritize
-                        this feature. Low = less important. <strong>Energy</strong> = intensity.
-                        <strong>Valence</strong> = happiness. <strong>Danceability</strong> = rhythm.
-                        <strong>Acousticness</strong> = unplugged sound.
-                    </div>
+            <div class="select-group" style="display: inline-block; width: 30%;">
+                <div class="select-label">Acoustic Mode</div>
+                <div class="select-wrapper">
+                    <div class="select-display" id="acoustic_option_display">Any</div>
+                    <select id="acoustic_option" onchange="updateSelectDisplay(this)">
+                        <option value="" selected>Any</option>
+                        <option value="acoustic">Acoustic Only</option>
+                        <option value="electric">Electric Only</option>
+                    </select>
                 </div>
             </div>
-            <div class="module-body">
-                <div class="mixer-section" id="mixer">
-                    <!-- Faders generated by JavaScript -->
+            <div class="select-group" style="display: inline-block; width: 30%;">
+                <div class="select-label">Liveness Mode</div>
+                <div class="select-wrapper">
+                    <div class="select-display" id="liveness_option_display">Any</div>
+                    <select id="liveness_option" onchange="updateSelectDisplay(this)">
+                        <option value="" selected>Any</option>
+                        <option value="live">Live Only</option>
+                        <option value="studio">Studio Only</option>
+                    </select>
+                </div>
+            </div>
+            <!-- Speechiness Knob -->
+            <div class="knob-group cyan" style="display: inline-block; vertical-align: top; margin-left: 10px;">
+                <div class="knob-label">Max Speech</div>
+                <div class="knob" data-id="max_speechiness" data-min="0" data-max="1" data-value="1.0" data-step="0.1">
+                    <div class="knob-outer">
+                        <div class="knob-inner cyan">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">1.0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thresholds Module -->
+    <div class="module" id="thresholds">
+        <div class="module-header">
+            <div class="module-led" style="background: var(--accent-pink); box-shadow: 0 0 8px var(--accent-pink);">
+            </div>
+            <div class="module-title">Popularity Thresholds</div>
+            <div class="module-help">?
+                <div class="tooltip">
+                    <span class="tooltip-title">Discovery vs. Mainstream</span>
+                    Filter tracks by Spotify popularity score (0 = unknown, 100 = #1 hit).<br><br>
+                    <strong>Min Play (ms)</strong>: Ignore plays shorter than this when building your profile. 30000 (30
+                    sec) filters skipped tracks.<br><br>
+                    <strong>Genre Min/Max</strong>: Popularity range for genre-matched candidates. 5-50 surfaces hidden
+                    gems.<br><br>
+                    <strong>Similar Min/Max</strong>: Range for similar-artist tracks. Can be slightly higher (5-60)
+                    since these are already filtered by artist quality.<br><br>
+                    <strong>Wild Min/Max</strong>: Range for serendipity picks. 10-60 balances discovery with
+                    quality.<br><br>
+                    💡 <em>Lower max = more obscure. Higher min = excludes unknown artists.</em>
                 </div>
             </div>
         </div>
+        <div class="module-body">
+            <div class="knob-group pink">
+                <div class="knob-label">Min Play (ms)</div>
+                <div class="knob" data-id="min_play_ms" data-min="10000" data-max="120000" data-value="30000"
+                    data-step="1000">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">30000</div>
+            </div>
+            <div class="knob-group pink">
+                <div class="knob-label">Genre Min</div>
+                <div class="knob" data-id="popularity_min" data-min="0" data-max="50" data-value="5">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">5</div>
+            </div>
+            <div class="knob-group pink">
+                <div class="knob-label">Genre Max</div>
+                <div class="knob" data-id="popularity_max" data-min="20" data-max="100" data-value="50">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">50</div>
+            </div>
+            <div class="knob-group pink">
+                <div class="knob-label">Similar Min</div>
+                <div class="knob" data-id="similar_popularity_min" data-min="0" data-max="50" data-value="5">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">5</div>
+            </div>
+            <div class="knob-group pink">
+                <div class="knob-label">Similar Max</div>
+                <div class="knob" data-id="similar_popularity_max" data-min="20" data-max="100" data-value="60">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">60</div>
+            </div>
+            <div class="knob-group pink">
+                <div class="knob-label">Wild Min</div>
+                <div class="knob" data-id="serendipity_popularity_min" data-min="0" data-max="50" data-value="10">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">10</div>
+            </div>
+            <div class="knob-group pink">
+                <div class="knob-label">Wild Max</div>
+                <div class="knob" data-id="serendipity_popularity_max" data-min="20" data-max="100" data-value="60">
+                    <div class="knob-outer">
+                        <div class="knob-inner pink">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">60</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DJ Tools Module -->
+    <div class="module" id="dj-tools">
+        <div class="module-header">
+            <div class="module-led" style="background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple);">
+            </div>
+            <div class="module-title">DJ Tools</div>
+            <div class="module-help">?
+                <div class="tooltip">
+                    <span class="tooltip-title">Harmonic Mixing & Tempo</span>
+                    Tools for DJs and seamless playlists.<br><br>
+                    <strong>Harmonic Mix</strong>: When ON, strongly boosts tracks in compatible keys using the Camelot
+                    wheel. Adjacent keys (8A→7A, 8A→9A) and relative major/minor (8A→8B) mix smoothly.<br><br>
+                    <strong>Smart BPM</strong>: Treats 70 bpm and 140 bpm as equivalent (half/double time). Essential
+                    for drum & bass, hip-hop transitions.<br><br>
+                    <strong>Target Key</strong>: Lock recommendations to a specific key. "Any" = no filter.<br><br>
+                    <strong>Mode Filter</strong>: Major only (happy), Minor only (moody), or Both.<br><br>
+                    <strong>Min/Max Tempo</strong>: Filter by BPM range. Leave at 0/0 for no filter.<br><br>
+                    💡 <em>For DJ sets: Enable Harmonic Mix + set a Target Key + Smart BPM.</em>
+                </div>
+            </div>
+        </div>
+        <div class="module-body">
+            <div class="toggle-group">
+                <div class="toggle-label">Harmonic Mix</div>
+                <div class="toggle-switch" data-id="dj_mode" onclick="toggleSwitch(this)">
+                    <div class="toggle-handle"></div>
+                </div>
+                <div class="toggle-led"></div>
+            </div>
+            <div class="toggle-group">
+                <div class="toggle-label">Smart BPM</div>
+                <div class="toggle-switch on" data-id="smart_bpm" onclick="toggleSwitch(this)">
+                    <div class="toggle-handle"></div>
+                </div>
+                <div class="toggle-led"></div>
+            </div>
+
+            <div class="select-group">
+                <div class="select-label">Target Key</div>
+                <div class="select-wrapper">
+                    <div class="select-display" id="target_camelot_display">Any</div>
+                    <select id="target_camelot" onchange="updateSelectDisplay(this)">
+                        <option value="" selected>Any</option>
+                        <option value="1A">1A (Abm)</option>
+                        <option value="1B">1B (B)</option>
+                        <option value="2A">2A (Ebm)</option>
+                        <option value="2B">2B (F#)</option>
+                        <option value="3A">3A (Bbm)</option>
+                        <option value="3B">3B (Db)</option>
+                        <option value="4A">4A (Fm)</option>
+                        <option value="4B">4B (Ab)</option>
+                        <option value="5A">5A (Cm)</option>
+                        <option value="5B">5B (Eb)</option>
+                        <option value="6A">6A (Gm)</option>
+                        <option value="6B">6B (Bb)</option>
+                        <option value="7A">7A (Dm)</option>
+                        <option value="7B">7B (F)</option>
+                        <option value="8A">8A (Am)</option>
+                        <option value="8B">8B (C)</option>
+                        <option value="9A">9A (Em)</option>
+                        <option value="9B">9B (G)</option>
+                        <option value="10A">10A (Bm)</option>
+                        <option value="10B">10B (D)</option>
+                        <option value="11A">11A (F#m)</option>
+                        <option value="11B">11B (A)</option>
+                        <option value="12A">12A (Dbm)</option>
+                        <option value="12B">12B (E)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="select-group">
+                <div class="select-label">Mode</div>
+                <div class="select-wrapper">
+                    <div class="select-display" id="mode_filter_display">Any</div>
+                    <select id="mode_filter" onchange="updateSelectDisplay(this)">
+                        <option value="" selected>Any</option>
+                        <option value="major">Major (1)</option>
+                        <option value="minor">Minor (0)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="select-group">
+                <div class="select-label">Vocals</div>
+                <div class="select-wrapper">
+                    <div class="select-display" id="vocal_mode_display">Any</div>
+                    <select id="vocal_mode" onchange="updateSelectDisplay(this)">
+                        <option value="" selected>Any</option>
+                        <option value="vocal_only">Vocals Only</option>
+                        <option value="instrumental_only">Instrumental</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="knob-group purple">
+                <div class="knob-label">Min BPM</div>
+                <div class="knob" data-id="min_tempo" data-min="60" data-max="180" data-value="60" data-step="5">
+                    <div class="knob-outer">
+                        <div class="knob-inner purple">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">60</div>
+            </div>
+
+            <div class="knob-group purple">
+                <div class="knob-label">Max BPM</div>
+                <div class="knob" data-id="max_tempo" data-min="60" data-max="180" data-value="180" data-step="5">
+                    <div class="knob-outer">
+                        <div class="knob-inner purple">
+                            <div class="knob-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="knob-value">180</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Output Options Module -->
+    <div class="module" id="output-options">
+        <div class="module-header">
+            <div class="module-led" style="background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green);">
+            </div>
+            <div class="module-title">Output Options</div>
+            <div class="module-help">?
+                <div class="tooltip">
+                    <span class="tooltip-title">Playlist Destinations</span>
+                    <strong>Save to Spotify</strong>: Creates or updates a playlist called "DIY Discovery" in your
+                    Spotify account. Non-destructive (won't delete existing playlists).<br><br>
+                    <strong>Sync to Tidal</strong>: Copies the playlist to Tidal using spotify_to_tidal. Requires
+                    one-time Tidal login setup. Tracks not on Tidal are skipped.<br><br>
+                    💡 <em>A tracklist text file is always saved to your home folder regardless of these settings.</em>
+                </div>
+            </div>
+        </div>
+        <div class="module-body">
+            <div class="checkbox-group spotify">
+                <input type="checkbox" class="checkbox" id="save_to_spotify" checked>
+                <label class="checkbox-label" for="save_to_spotify">Save to Spotify</label>
+            </div>
+            <div class="checkbox-group tidal">
+                <input type="checkbox" class="checkbox" id="save_to_tidal" checked>
+                <label class="checkbox-label" for="save_to_tidal">Sync to Tidal</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feature Weights Mixer -->
+    <div class="module" id="feature-weights">
+        <div class="module-header">
+            <div class="module-led" style="background: var(--accent-yellow); box-shadow: 0 0 8px var(--accent-yellow);">
+            </div>
+            <div class="module-title">Audio Feature Mixer</div>
+            <div class="module-help">?
+                <div class="tooltip">
+                    <span class="tooltip-title">Audio Feature Weights</span>
+                    Adjust how much each audio characteristic matters when matching tracks. 0 = ignore, 0.5 = low, 1.0 =
+                    normal, 1.5 = high priority.<br><br>
+                    <strong>Energy</strong>: Intensity and activity level (loud, fast, noisy = high).<br>
+                    <strong>Valence</strong>: Musical positiveness (happy, cheerful = high; sad, angry = low).<br>
+                    <strong>Danceability</strong>: Rhythm stability, beat strength, groove.<br>
+                    <strong>Acousticness</strong>: Confidence the track is acoustic (unplugged).<br>
+                    <strong>Tempo</strong>: BPM matching importance.<br>
+                    <strong>Loudness</strong>: Overall volume level.<br>
+                    <strong>Speechiness</strong>: Presence of spoken words.<br>
+                    <strong>Instrumentalness</strong>: Likelihood of no vocals.<br>
+                    <strong>Liveness</strong>: Presence of live audience.<br><br>
+                    💡 <em>Boost Energy+Valence for workout playlists. Boost Acousticness for unplugged vibes.</em>
+                </div>
+            </div>
+        </div>
+        <div class="module-body">
+            <div class="mixer-section" id="mixer">
+                <!-- Faders generated by JavaScript -->
+            </div>
+        </div>
+    </div>
     </div>
 
     <!-- Modal -->
@@ -1643,6 +1940,23 @@
                 fw[id] = config.value;
             }
 
+            const switches = {
+                use_local_history: document.querySelector('[data-id="use_local_history"]').classList.contains('on'),
+                use_api_related_artists: document.querySelector('[data-id="use_api_related_artists"]').classList.contains('on'),
+                rediscovery_mode: document.querySelector('[data-id="rediscovery_mode"]').classList.contains('on'),
+                penalize_skips: document.querySelector('[data-id="penalize_skips"]').classList.contains('on'),
+                dj_mode: document.querySelector('[data-id="dj_mode"]').classList.contains('on'),
+                smart_bpm: document.querySelector('[data-id="smart_bpm"]').classList.contains('on')
+            };
+
+            const decade = document.getElementById('decade_select').value;
+            let release_year_min = null;
+            let release_year_max = null;
+            if (decade !== 'any') {
+                release_year_min = parseInt(decade);
+                release_year_max = release_year_min + 9;
+            }
+
             return {
                 recommender: {
                     total_tracks: knobValues.total_tracks,
@@ -1655,9 +1969,10 @@
                     recency_decay: knobValues.recency_decay,
                     range_penalty_strength: knobValues.range_penalty_strength,
                     genre_match_mode: document.getElementById('genre_match_mode').value,
-                    use_local_history: document.querySelector('[data-id="use_local_history"]').classList.contains('on'),
+                    use_local_history: switches.use_local_history,
                     history_path: document.getElementById('history_path').value,
-                    use_api_related_artists: document.querySelector('[data-id="use_api_related_artists"]').classList.contains('on'),
+                    use_api_related_artists: switches.use_api_related_artists,
+                    penalize_skips: switches.penalize_skips,
                     min_play_ms: knobValues.min_play_ms,
                     popularity_min: knobValues.popularity_min,
                     popularity_max: knobValues.popularity_max,
@@ -1667,7 +1982,30 @@
                     serendipity_popularity_max: knobValues.serendipity_popularity_max,
                     top_artists_limit: knobValues.top_artists_limit,
                     console_preview_count: knobValues.console_preview_count,
-                    feature_weights: fw
+                    feature_weights: fw,
+                    date_start: document.getElementById('date_start').value || null,
+                    date_end: document.getElementById('date_end').value || null,
+                    blocked_genres: document.getElementById('blocked_genres').value
+                        ? document.getElementById('blocked_genres').value.split(',').map(s => s.trim()).filter(s => s)
+                        : [],
+                    skip_penalty: knobValues.skip_penalty,
+                    repeat_boost: knobValues.repeat_boost,
+                    max_speechiness: knobValues.max_speechiness < 1.0 ? knobValues.max_speechiness : null,
+                    acoustic_option: document.getElementById('acoustic_option').value || null,
+                    liveness_option: document.getElementById('liveness_option').value || null,
+                    rediscovery_mode: switches.rediscovery_mode,
+                    rediscovery_days: knobValues.rediscovery_days,
+                    release_year_min: release_year_min,
+                    release_year_max: release_year_max,
+
+                    // DJ Tools
+                    dj_mode: switches.dj_mode,
+                    smart_bpm: switches.smart_bpm,
+                    target_camelot: document.getElementById('target_camelot').value || null,
+                    mode_filter: document.getElementById('mode_filter').value || null,
+                    vocal_mode: document.getElementById('vocal_mode').value || null,
+                    min_tempo: knobValues.min_tempo > 60 ? knobValues.min_tempo : null,
+                    max_tempo: knobValues.max_tempo < 180 ? knobValues.max_tempo : null
                 }
             };
         }
@@ -1700,6 +2038,9 @@ recommender:
   history_path: ${r.history_path}
   use_api_related_artists: ${r.use_api_related_artists}
   
+  # Skips
+  penalize_skips: ${r.penalize_skips}
+  
   # Thresholds
   min_play_ms: ${Math.round(r.min_play_ms)}
   popularity_min: ${Math.round(r.popularity_min)}
@@ -1711,7 +2052,37 @@ recommender:
   
   # Collaborative filtering
   top_artists_limit: ${Math.round(r.top_artists_limit)}
+
+  # Filters
+  date_start: ${r.date_start || ''}
+  date_end: ${r.date_end || ''}
+  blocked_genres: [${r.blocked_genres.map(g => '"' + g + '"').join(', ')}]
   
+  # Advanced Tweaks
+  skip_penalty: ${r.skip_penalty}
+  repeat_boost: ${r.repeat_boost}
+  max_speechiness: ${r.max_speechiness !== null ? r.max_speechiness : 1.0}
+  acoustic_option: ${r.acoustic_option || null}
+  liveness_option: ${r.liveness_option || null}
+  
+  # Rediscovery
+  rediscovery_mode: ${r.rediscovery_mode}
+  rediscovery_days: ${r.rediscovery_days}
+  
+  # Era
+  release_year_min: ${r.release_year_min || null}
+  release_year_max: ${r.release_year_max || null}
+
+  # DJ Tools
+  dj_mode: ${r.dj_mode}
+  smart_bpm: ${r.smart_bpm}
+  target_camelot: ${r.target_camelot || null}
+  mode_filter: ${r.mode_filter || null}
+  vocal_mode: ${r.vocal_mode || null}
+  min_tempo: ${r.min_tempo || null}
+  max_tempo: ${r.max_tempo || null}
+
+
   # Display
   console_preview_count: ${Math.round(r.console_preview_count)}
   
@@ -1813,11 +2184,52 @@ recommender:
                                 if (value === 'true') toggle.classList.add('on');
                                 else toggle.classList.remove('on');
                             }
+                        } else if (cleanKey === 'penalize_skips') {
+                            const toggle = document.querySelector(`[data-id="${cleanKey}"]`);
+                            if (toggle) {
+                                if (value === 'true') toggle.classList.add('on');
+                                else toggle.classList.remove('on');
+                            }
+                        } else if (cleanKey === 'dj_mode' || cleanKey === 'smart_bpm') {
+                            const toggle = document.querySelector(`[data-id="${cleanKey}"]`);
+                            if (toggle) {
+                                if (value === 'true') toggle.classList.add('on');
+                                else toggle.classList.remove('on');
+                            }
                         } else if (cleanKey === 'history_path') {
                             document.getElementById('history_path').value = value;
                         } else if (cleanKey === 'genre_match_mode') {
                             const select = document.getElementById('genre_match_mode');
                             select.value = value;
+                            updateSelectDisplay(select);
+                        } else if (cleanKey === 'date_start') {
+                            document.getElementById('date_start').value = value;
+                        } else if (cleanKey === 'date_end') {
+                            document.getElementById('date_end').value = value;
+                        } else if (cleanKey === 'blocked_genres') {
+                            // Value might be [a, b] style string or just the content
+                            // Simple parsing for now: remove brackets and quotes
+                            let genres = value.replace(/^\[|\]$/g, '').replace(/"|'/g, '');
+                            document.getElementById('blocked_genres').value = genres;
+                        } else if (cleanKey === 'acoustic_option') {
+                            const select = document.getElementById('acoustic_option');
+                            select.value = value || "";
+                            updateSelectDisplay(select);
+                        } else if (cleanKey === 'liveness_option') {
+                            const select = document.getElementById('liveness_option');
+                            select.value = value || "";
+                            updateSelectDisplay(select);
+                        } else if (cleanKey === 'target_camelot') {
+                            const select = document.getElementById('target_camelot');
+                            select.value = value || "";
+                            updateSelectDisplay(select);
+                        } else if (cleanKey === 'mode_filter') {
+                            const select = document.getElementById('mode_filter');
+                            select.value = value || "";
+                            updateSelectDisplay(select);
+                        } else if (cleanKey === 'vocal_mode') {
+                            const select = document.getElementById('vocal_mode');
+                            select.value = value || "";
                             updateSelectDisplay(select);
                         }
                     }
@@ -1886,6 +2298,32 @@ recommender:
             select.value = randomMode;
             updateSelectDisplay(select);
 
+            // Randomize DJ tools (dropdowns)
+            ['target_camelot', 'mode_filter', 'vocal_mode'].forEach(id => {
+                const el = document.getElementById(id);
+                const opts = el.options;
+                // 50% chance to be "Any" (index 0), 50% random specific
+                if (Math.random() > 0.5) {
+                    el.selectedIndex = 0;
+                } else {
+                    el.selectedIndex = Math.floor(Math.random() * (opts.length - 1)) + 1;
+                }
+                updateSelectDisplay(el);
+            });
+
+            // Fix min/max tempo to be logical if randomized
+            if (knobValues.min_tempo > knobValues.max_tempo) {
+                const temp = knobValues.min_tempo;
+                knobValues.min_tempo = knobValues.max_tempo;
+                knobValues.max_tempo = temp;
+                // update DOM
+                ['min_tempo', 'max_tempo'].forEach(id => {
+                    const k = document.querySelector(`[data-id="${id}"]`);
+                    k.dataset.value = knobValues[id];
+                    // force redraw manually or wait for next frame (simple enough to leave as is, user will see numbers)
+                });
+            }
+
             // Randomize feature weights
             for (const [id, config] of Object.entries(featureWeights)) {
                 const randomWeight = Math.round((Math.random() * 2) * 10) / 10; // 0.0 to 2.0
@@ -1917,6 +2355,11 @@ recommender:
                 related_candidates_limit: 80,
                 profile_tracks_limit: 150,
                 n_clusters: 3,
+                'use_local_history': false,
+                'use_api_related_artists': false,
+                'save_spotify': true,
+                'save_tidal': true,
+                'rediscovery_mode': false,
                 recency_decay: 2.0,
                 range_penalty_strength: 0.1,
                 min_play_ms: 30000,
@@ -1927,7 +2370,10 @@ recommender:
                 serendipity_popularity_min: 10,
                 serendipity_popularity_max: 60,
                 top_artists_limit: 20,
-                console_preview_count: 10
+                console_preview_count: 10,
+                // DJ defaults
+                min_tempo: 60,
+                max_tempo: 180
             };
 
             // Reset all knobs
@@ -1956,7 +2402,29 @@ recommender:
             updateSelectDisplay(select);
 
             // Reset history path
-            document.getElementById('history_path').value = 'my_spotify_data/Spotify Extended Streaming History';
+            document.getElementById('history_path').value = 'my_spotify_data(2)/Spotify Extended Streaming History';
+
+            // Reset filters
+            document.getElementById('date_start').value = '';
+            document.getElementById('date_end').value = '';
+            document.getElementById('blocked_genres').value = '';
+
+            // Reset checkboxes
+            document.getElementById('save_to_spotify').checked = true;
+            document.getElementById('save_to_tidal').checked = true;
+
+            // Reset penalize skips
+            document.querySelector('[data-id="penalize_skips"]').classList.add('on');
+
+            // Reset DJ tools
+            document.querySelector('[data-id="dj_mode"]').classList.remove('on');
+            document.querySelector('[data-id="smart_bpm"]').classList.add('on');
+            ['target_camelot', 'mode_filter', 'vocal_mode'].forEach(id => {
+                const el = document.getElementById(id);
+                el.value = "";
+                updateSelectDisplay(el);
+            });
+            // Reset tempo knobs explicitly if needed (handled by defaults map below)
 
             // Reset feature weights to defaults
             const defaultWeights = {
@@ -2008,12 +2476,14 @@ recommender:
                 const yaml = generateYaml();
                 const saveToSpotify = document.getElementById('save_to_spotify').checked;
                 const saveToTidal = document.getElementById('save_to_tidal').checked;
+                const seedPlaylist = document.getElementById('seed_playlist').value.trim();
 
                 // Send config with options
                 const payload = JSON.stringify({
                     config: yaml,
                     save_spotify: saveToSpotify,
-                    save_tidal: saveToTidal
+                    save_tidal: saveToTidal,
+                    seed_playlist: seedPlaylist || null
                 });
 
                 const response = await fetch('/api/run-stream', {

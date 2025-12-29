@@ -27,7 +27,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 def find_python_with_spotipy():
     """Find a Python with spotipy installed."""
     candidates = [
-        '/home/jon/anaconda3/bin/python',  # User's anaconda
         os.path.expanduser('~/anaconda3/bin/python'),
         os.path.expanduser('~/miniconda3/bin/python'),
         'python',
@@ -84,11 +83,13 @@ class ConfigHandler(http.server.SimpleHTTPRequestHandler):
                 config_yaml = payload.get('config', '')
                 save_spotify = payload.get('save_spotify', True)
                 save_tidal = payload.get('save_tidal', True)
+                seed_playlist = payload.get('seed_playlist')
             except json.JSONDecodeError:
                 # Fallback: treat as plain YAML
                 config_yaml = post_data.decode('utf-8')
                 save_spotify = True
                 save_tidal = True
+                seed_playlist = None
             
             # Write config to temp file with spotify credentials
             with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
@@ -130,6 +131,14 @@ class ConfigHandler(http.server.SimpleHTTPRequestHandler):
                 cmd.append('--skip-spotify')
             if not save_tidal:
                 cmd.append('--skip-tidal')
+            if seed_playlist:
+                # Extract playlist ID from URL if needed
+                playlist_id = seed_playlist
+                if 'spotify.com/playlist/' in seed_playlist:
+                    playlist_id = seed_playlist.split('playlist/')[-1].split('?')[0]
+                elif 'spotify:playlist:' in seed_playlist:
+                    playlist_id = seed_playlist.split(':')[-1]
+                cmd.extend(['--seed_playlist', playlist_id])
             
             # Send SSE headers
             self.send_response(200)
@@ -397,6 +406,8 @@ class ConfigHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def main():
+    # Allow port reuse immediately after restart
+    socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), ConfigHandler) as httpd:
         print(f"""
 ╔══════════════════════════════════════════════════════════════╗
